@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Role</title>
+</head>
+<body>
+    <h1>Welcome! Please select your role:</h1>
+    <form method="POST" action="/select-role">
+        <input type="hidden" name="id" value="{{.UserID}}">
+        <label>
+            <input type="radio" name="role" value="super_admin"> Super Admin
+        </label><br>
+        <label>
+            <input type="radio" name="role" value="recruiter"> Recruiter
+        </label><br>
+        <label>
+            <input type="radio" name="role" value="applicant" checked> Applicant
+        </label><br>
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
