@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recruiter Dashboard</title>
+</head>
+<body>
+    <h1>Welcome, {{.Name}}!</h1>
+    <h2>Company: {{.Company.Title}}</h2>
+    <p>{{.Company.Description}}</p>
+    <p>Logo: <img src="{{.Company.Logo}}" alt="Company Logo" width="100"></p>
+    <h3>Search Applicants by Skills</h3>
+    <form method="POST" action="/recruiter/search-applicants">
+        <label>Skills (comma-separated): <input type="text" name="skills"></label>
+        <button type="submit">Search</button>
+    </form>
+    <h3>Job Postings</h3>
+    <p>[Job postings placeholder]</p>
+    <a href="/logout">Logout</a>
+</body>
+</html>

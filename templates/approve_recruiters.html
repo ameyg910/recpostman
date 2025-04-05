@@ -6,9 +6,10 @@
 <body>
     <h1>Pending Recruiter Approvals</h1>
     {{range .Recruiters}}
-        <p>{{.Name}} ({{.Email}})</p>
+        <p>{{.Name}} ({{.Email}}) - Company: {{.CompanyTitle}}</p>
         <form method="POST" action="/admin/approve-recruiter">
-            <input type="hidden" name="id" value="{{.ID}}">
+            <input type="hidden" name="id" value="{{.UserID}}">
+            <input type="hidden" name="company_id" value="{{.CompanyID}}">
             <button type="submit">Approve</button>
         </form>
     {{else}}

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Applicants</title>
+</head>
+<body>
+    <h1>Search Results</h1>
+    {{range .Applicants}}
+        <p>{{.Name}} ({{.Email}})</p>
+        <ul>
+            {{range .Skills}}
+                <li>{{.}}</li>
+            {{end}}
+        </ul>
+    {{else}}
+        <p>No applicants found.</p>
+    {{end}}
+    <a href="/dashboard">Back to Dashboard</a>
+</body>
+</html>

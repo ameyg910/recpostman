@@ -8,15 +8,30 @@
     <form method="POST" action="/select-role">
         <input type="hidden" name="id" value="{{.UserID}}">
         <label>
-            <input type="radio" name="role" value="super_admin"> Super Admin
+            <input type="radio" name="role" value="super_admin" onclick="toggleFields()"> Super Admin
         </label><br>
         <label>
-            <input type="radio" name="role" value="recruiter"> Recruiter
+            <input type="radio" name="role" value="recruiter" onclick="toggleFields()"> Recruiter
         </label><br>
+        <div id="recruiter-fields" style="display:none;">
+            <label>Company Title: <input type="text" name="company_title"></label><br>
+            <label>Company Description: <textarea name="company_description"></textarea></label><br>
+            <label>Company Logo URL: <input type="text" name="company_logo"></label><br>
+        </div>
         <label>
-            <input type="radio" name="role" value="applicant" checked> Applicant
+            <input type="radio" name="role" value="applicant" checked onclick="toggleFields()"> Applicant
         </label><br>
+        <div id="applicant-fields" style="display:block;">
+            <label>Skills (comma-separated): <input type="text" name="skills" placeholder="e.g., Go, Python"></label><br>
+        </div>
         <button type="submit">Submit</button>
     </form>
+    <script>
+        function toggleFields() {
+            const role = document.querySelector('input[name="role"]:checked').value;
+            document.getElementById('recruiter-fields').style.display = role === 'recruiter' ? 'block' : 'none';
+            document.getElementById('applicant-fields').style.display = role === 'applicant' ? 'block' : 'none';
+        }
+    </script>
 </body>
 </html>

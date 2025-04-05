@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Applicant Dashboard</title>
+</head>
+<body>
+    <h1>Welcome, {{.Name}}!</h1>
+    <h2>Your Skills</h2>
+    <ul>
+        {{range .Skills}}
+            <li>{{.}}</li>
+        {{end}}
+    </ul>
+    <h3>Job Postings</h3>
+    <p>[Job postings placeholder]</p>
+    <h3>Application Status</h3>
+    <p>[Application status placeholder]</p>
+    <h3>Upload Resume</h3>
+    <p>[Resume upload placeholder]</p>
+    <a href="/logout">Logout</a>
+</body>
+</html>
