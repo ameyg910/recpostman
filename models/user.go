@@ -13,6 +13,6 @@ type User struct {
     Email     string
     Name      string
     Role      Role
-    Skills    []string // For applicants
-    CompanyID string   // For recruiters
+    Skills    []string
+    CompanyID string
 }

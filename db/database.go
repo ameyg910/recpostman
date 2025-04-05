@@ -3,9 +3,9 @@ package db
 import (
     "database/sql"
     "encoding/json"
+    "fmt"
     "log"
     "os"
-	"fmt"
 
     _ "github.com/lib/pq"
     "rec_postman/models"
@@ -27,25 +27,30 @@ func InitDB() {
     if err != nil {
         log.Fatal("Error opening database: ", err)
     }
-
-    // Test connection
     if err = DB.Ping(); err != nil {
         log.Fatal("Error connecting to database: ", err)
     }
 
-    // Create users table
     query := `
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         role TEXT NOT NULL,
-        skills JSONB,  -- JSONB for efficient storage and querying
-        company_id TEXT
+        skills JSONB,
+        company_id TEXT,
+        approved BOOLEAN DEFAULT FALSE
     );`
     _, err = DB.Exec(query)
     if err != nil {
         log.Fatal("Error creating users table: ", err)
+    }
+
+    alterQuery := `
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT FALSE;`
+    _, err = DB.Exec(alterQuery)
+    if err != nil {
+        log.Fatal("Error adding approved column: ", err)
     }
 
     log.Println("Connected to PostgreSQL and initialized users table")
@@ -53,29 +58,32 @@ func InitDB() {
 
 func SaveUser(user *models.User) error {
     query := `
-    INSERT INTO users (id, email, name, role, skills, company_id)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO users (id, email, name, role, skills, company_id, approved)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email,
         name = EXCLUDED.name,
         role = EXCLUDED.role,
         skills = EXCLUDED.skills,
-        company_id = EXCLUDED.company_id;`
+        company_id = EXCLUDED.company_id,
+        approved = EXCLUDED.approved;`
     skillsJSON, _ := json.Marshal(user.Skills)
-    _, err := DB.Exec(query, user.ID, user.Email, user.Name, user.Role, skillsJSON, user.CompanyID)
+    approved := user.Role != models.Recruiter // Only recruiters need approval
+    _, err := DB.Exec(query, user.ID, user.Email, user.Name, user.Role, skillsJSON, user.CompanyID, approved)
     return err
 }
 
 func GetUser(id string) (*models.User, error) {
-    query := `SELECT id, email, name, role, skills, company_id FROM users WHERE id = $1;`
+    query := `SELECT id, email, name, role, skills, company_id, approved FROM users WHERE id = $1;`
     row := DB.QueryRow(query, id)
 
     var user models.User
     var skillsJSON []byte
-    err := row.Scan(&user.ID, &user.Email, &user.Name, &user.Role, &skillsJSON, &user.CompanyID)
+    var approved bool
+    err := row.Scan(&user.ID, &user.Email, &user.Name, &user.Role, &skillsJSON, &user.CompanyID, &approved)
     if err != nil {
         if err == sql.ErrNoRows {
-            return nil, nil // User not found
+            return nil, nil
         }
         return nil, err
     }
