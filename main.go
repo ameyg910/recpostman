@@ -81,14 +81,26 @@ func main() {
 }
 
 func handleGoogleLogin(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	log.Println("handleGoogleLogin: userID from session:", userID)
+	if userID != nil {
+		log.Println("User is logged in, redirecting to /dashboard")
+		c.Redirect(http.StatusFound, "/dashboard")
+		c.Abort()
+		return
+	}
+	log.Println("User not logged in, proceeding with OAuth")
 	url := googleOauthConfig.AuthCodeURL("state", oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "select_account"))
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
 func handleGoogleCallback(c *gin.Context) {
+	log.Println("Entering handleGoogleCallback")
 	code := c.Query("code")
 	token, err := googleOauthConfig.Exchange(c, code)
 	if err != nil {
+		log.Println("Failed to exchange token:", err)
 		c.String(http.StatusBadRequest, "Failed to exchange token: "+err.Error())
 		return
 	}
@@ -96,6 +108,7 @@ func handleGoogleCallback(c *gin.Context) {
 	client := googleOauthConfig.Client(c, token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
+		log.Println("Failed to get user info:", err)
 		c.String(http.StatusBadRequest, "Failed to get user info: "+err.Error())
 		return
 	}
@@ -103,9 +116,11 @@ func handleGoogleCallback(c *gin.Context) {
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Println("Failed to read response:", err)
 		c.String(http.StatusInternalServerError, "Failed to read response: "+err.Error())
 		return
 	}
+	log.Println("Raw response from Google:", string(data)) // Log the raw response
 
 	var userInfo struct {
 		ID    string `json:"id"`
@@ -113,6 +128,7 @@ func handleGoogleCallback(c *gin.Context) {
 		Name  string `json:"given_name"`
 	}
 	if err := json.Unmarshal(data, &userInfo); err != nil {
+		log.Println("Failed to parse user info:", err)
 		c.String(http.StatusInternalServerError, "Failed to parse user info: "+err.Error())
 		return
 	}
@@ -122,50 +138,113 @@ func handleGoogleCallback(c *gin.Context) {
 		Email: userInfo.Email,
 		Name:  userInfo.Name,
 	}
+	log.Println("User info:", user.ID, user.Email)
 
-	if err := db.SaveUser(&user); err != nil {
-		c.String(http.StatusInternalServerError, "Failed to save user: "+err.Error())
+	existingUser, err := db.GetUser(user.ID)
+	if err != nil {
+		log.Println("Failed to check existing user:", err)
+		c.String(http.StatusInternalServerError, "Failed to check user: "+err.Error())
 		return
 	}
 
 	session := sessions.Default(c)
+	if existingUser != nil && existingUser.Role != "" {
+		log.Println("Existing user with role found:", existingUser.Role)
+		session.Set("user_id", user.ID)
+		session.Save()
+		c.Redirect(http.StatusFound, "/dashboard")
+		return
+	}
+
+	if user.Email == "ameygupta880@gmail.com" {
+		log.Println("Assigning SuperAdmin to ameygupta880@gmail.com")
+		user.Role = models.SuperAdmin
+		if err := db.SaveUser(&user); err != nil {
+			log.Println("Failed to save super admin:", err)
+			c.String(http.StatusInternalServerError, "Failed to save super admin: "+err.Error())
+			return
+		}
+		session.Set("user_id", user.ID)
+		session.Save()
+		c.Redirect(http.StatusFound, "/dashboard")
+		return
+	}
+
+	if err := db.SaveUser(&user); err != nil {
+		log.Println("Failed to save user:", err)
+		c.String(http.StatusInternalServerError, "Failed to save user: "+err.Error())
+		return
+	}
+
 	session.Set("user_id", user.ID)
 	session.Save()
-
+	log.Println("Redirecting to /select-role for new user")
 	c.Redirect(http.StatusFound, "/select-role?id="+user.ID)
 }
 
 func handleSelectRole(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
+	log.Println("handleSelectRole: userID from session:", userID)
 	if userID == nil {
+		log.Println("No session, redirecting to /auth/google/login")
 		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
+
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		log.Println("Failed to fetch user:", err)
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+	log.Println("User role:", user.Role)
+
+	if user.Role != "" {
+		log.Println("Role already set, redirecting to /dashboard")
+		c.Redirect(http.StatusFound, "/dashboard")
+		c.Abort()
 		return
 	}
 
 	c.HTML(http.StatusOK, "select_role.html", gin.H{
 		"UserID": userID,
+		"Email":  user.Email,
 	})
 }
 
 func handleRoleSubmission(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
+	log.Println("handleRoleSubmission: userID from session:", userID)
 	if userID == nil {
+		log.Println("No session, redirecting to /auth/google/login")
 		c.Redirect(http.StatusFound, "/auth/google/login")
 		return
 	}
 
-	role := c.PostForm("role")
 	user, err := db.GetUser(userID.(string))
 	if err != nil {
+		log.Println("Failed to fetch user:", err)
 		c.String(http.StatusBadRequest, "User not found: "+err.Error())
 		return
 	}
 
+	if user.Role != "" {
+		log.Println("Role already assigned:", user.Role)
+		c.HTML(http.StatusForbidden, "error.html", gin.H{"Message": "Role already assigned and cannot be changed"})
+		return
+	}
+
+	role := c.PostForm("role")
+	log.Println("Selected role:", role)
+	if user.Email == "ameygupta880@gmail.com" {
+		log.Println("Attempt to change SuperAdmin role blocked")
+		c.HTML(http.StatusForbidden, "error.html", gin.H{"Message": "This account is reserved for Super Admin only"})
+		return
+	}
+
 	switch role {
-	case "super_admin":
-		user.Role = models.SuperAdmin
 	case "recruiter":
 		user.Role = models.Recruiter
 		companyTitle := c.PostForm("company_title")
@@ -183,6 +262,7 @@ func handleRoleSubmission(c *gin.Context) {
 		}
 		companyID, err := db.SaveCompany(&company)
 		if err != nil {
+			log.Println("Failed to save company:", err)
 			c.String(http.StatusInternalServerError, "Failed to save company: "+err.Error())
 			return
 		}
@@ -196,15 +276,17 @@ func handleRoleSubmission(c *gin.Context) {
 		}
 		user.Skills = skills
 	default:
+		log.Println("Invalid role selected:", role)
 		c.String(http.StatusBadRequest, "Invalid role")
 		return
 	}
 
 	if err := db.SaveUser(user); err != nil {
+		log.Println("Failed to update user:", err)
 		c.String(http.StatusInternalServerError, "Failed to update user: "+err.Error())
 		return
 	}
-
+	log.Println("Role assigned successfully:", user.Role)
 	c.Redirect(http.StatusFound, "/dashboard")
 }
 
@@ -383,12 +465,13 @@ func handleUploadResume(c *gin.Context) {
 		}
 	}
 	filename := filepath.Join(uploadDir, userID.(string)+"_"+file.Filename)
-	log.Println("Saving file to:", filename)
+	log.Println("Attempting to save file to:", filename)
 	if err := c.SaveUploadedFile(file, filename); err != nil {
 		log.Println("Failed to save file:", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
 		return
 	}
+	log.Println("File saved successfully to:", filename)
 
 	log.Println("Fetching user from DB")
 	user, err := db.GetUser(userID.(string))
@@ -404,6 +487,7 @@ func handleUploadResume(c *gin.Context) {
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to update user with resume: " + err.Error()})
 		return
 	}
+	log.Println("User updated successfully")
 
 	log.Println("Redirecting to /dashboard")
 	c.Redirect(http.StatusFound, "/dashboard")
@@ -419,7 +503,7 @@ func handleRequestInterview(c *gin.Context) {
 
 	applicantID := c.PostForm("applicant_id")
 	jobIDStr := c.PostForm("job_id")
-	scheduledAtStr := c.PostForm("scheduled_at") // Format: "2025-04-10 14:00"
+	scheduledAtStr := c.PostForm("scheduled_at")
 
 	jobID, err := strconv.Atoi(jobIDStr)
 	if err != nil {
@@ -459,7 +543,7 @@ func handleUpdateInterview(c *gin.Context) {
 	}
 
 	interviewIDStr := c.PostForm("interview_id")
-	status := c.PostForm("status") // "accepted" or "declined"
+	status := c.PostForm("status")
 	interviewID, err := strconv.Atoi(interviewIDStr)
 	if err != nil || (status != "accepted" && status != "declined") {
 		c.String(http.StatusBadRequest, "Invalid interview ID or status")
