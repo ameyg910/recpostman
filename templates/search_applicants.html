@@ -1,26 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Search Applicants</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: Arial, sans-serif; }
+        .header { background-color: #007bff; color: white; padding: 20px 0; text-align: center; }
+        .btn-custom { margin: 5px; }
+    </style>
 </head>
 <body>
-    <h1>Search Results</h1>
-    {{range .Applicants}}
-        <p>{{.Name}} ({{.Email}})</p>
-        <ul>
-            {{range .Skills}}
-                <li>{{.}}</li>
-            {{end}}
-        </ul>
-        <form method="POST" action="/recruiter/request-interview">
-            <input type="hidden" name="applicant_id" value="{{.ID}}">
-            <label>Job ID: <input type="number" name="job_id"></label>
-            <label>Schedule: <input type="text" name="scheduled_at" placeholder="YYYY-MM-DD HH:MM"></label>
-            <button type="submit">Request Interview</button>
-        </form>
-    {{else}}
-        <p>No applicants found.</p>
-    {{end}}
-    <a href="/dashboard">Back to Dashboard</a>
+    <div class="header">
+        <div class="container">
+            <h1>Search Applicants</h1>
+            <p>Welcome, {{.Name}}</p>
+        </div>
+    </div>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <a href="/logout" class="btn btn-danger btn-custom">Logout</a>
+                <a href="/dashboard" class="btn btn-primary btn-custom">Back to Dashboard</a>
+            </div>
+        </div>
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <form action="/recruiter/search-applicants" method="POST">
+                    <div class="mb-3">
+                        <label for="skills" class="form-label">Skills (comma-separated)</label>
+                        <input type="text" class="form-control" id="skills" name="skills" placeholder="e.g., Go, Python, SQL" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-custom">Search</button>
+                </form>
+            </div>
+        </div>
+        {{if .Applicants}}
+            <h3 class="mt-4">Matching Applicants</h3>
+            <table class="table table-striped mt-2">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Skills</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Applicants}}
+                        <tr>
+                            <td>{{.Email}}</td>
+                            <td>{{range .Skills}}{{.}}, {{end}}</td>
+                        </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        {{else if .ApplicantsLoaded}}
+            <p class="text-center mt-4">No applicants found with the specified skills.</p>
+        {{end}}
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -1,79 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Applicant Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: Arial, sans-serif; }
+        .header { background-color: #007bff; color: white; padding: 20px 0; text-align: center; }
+        .btn-custom { margin: 5px; }
+    </style>
 </head>
 <body>
-    <h1>Welcome, {{.Name}}!</h1>
-    <h2>Your Skills</h2>
-    <ul>
-        {{range .Skills}}
-            <li>{{.}}</li>
+    <div class="header">
+        <div class="container">
+            <h1>Applicant Dashboard</h1>
+            <p>Welcome, {{.Name}}</p>
+        </div>
+    </div>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <a href="/logout" class="btn btn-danger btn-custom">Logout</a>
+                <button class="btn btn-primary btn-custom" data-bs-toggle="modal" data-bs-target="#uploadResumeModal">Upload Resume</button>
+            </div>
+        </div>
+        {{if .Jobs}}
+            <h3 class="mt-4">Available Jobs</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Skills</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Jobs}}
+                        <tr>
+                            <td>{{.Title}}</td>
+                            <td>{{.Description}}</td>
+                            <td>{{range .Skills}}{{.}}, {{end}}</td>
+                            <td>
+                                <form action="/applicant/apply-job" method="POST">
+                                    <input type="hidden" name="job_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-success btn-custom">Apply</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        {{else}}
+            <p class="text-center mt-4">No jobs available.</p>
         {{end}}
-    </ul>
+    </div>
 
-    <h3>Upload Resume</h3>
-    {{if .Resume}}
-        <p>Resume: <a href="{{.Resume}}" target="_blank">{{.Resume}}</a></p>
-    {{end}}
-    <form method="POST" action="/applicant/upload-resume" enctype="multipart/form-data">
-        <label>Resume: <input type="file" name="resume"></label>
-        <button type="submit">Upload</button>
-    </form>
-
-    <h3>Recommended Jobs</h3>
-    {{range .RecommendedJobs}}
-        <p>{{.Title}} - {{.Description}}</p>
-        <ul>
-            {{range .Skills}}
-                <li>{{.}}</li>
-            {{end}}
-        </ul>
-        <form method="POST" action="/applicant/apply-job">
-            <input type="hidden" name="job_id" value="{{.ID}}">
-            <button type="submit">Apply</button>
-        </form>
-    {{else}}
-        <p>No recommended jobs yet.</p>
-    {{end}}
-
-    <h3>All Job Postings</h3>
-    {{range .Jobs}}
-        <p>{{.Title}} - {{.Description}}</p>
-        <ul>
-            {{range .Skills}}
-                <li>{{.}}</li>
-            {{end}}
-        </ul>
-        <form method="POST" action="/applicant/apply-job">
-            <input type="hidden" name="job_id" value="{{.ID}}">
-            <button type="submit">Apply</button>
-        </form>
-    {{else}}
-        <p>No jobs available.</p>
-    {{end}}
-
-    <h3>Your Applications</h3>
-    {{range .Applications}}
-        <p>Job ID: {{.JobID}} - Status: {{.Status}}</p>
-    {{else}}
-        <p>No applications yet.</p>
-    {{end}}
-
-    <h3>Interview Requests</h3>
-    {{range .Interviews}}
-        <p>Job ID: {{.JobID}} - Status: {{.Status}} - Scheduled: {{.ScheduledAt}}</p>
-        {{if eq .Status "requested"}}
-            <form method="POST" action="/applicant/update-interview">
-                <input type="hidden" name="interview_id" value="{{.ID}}">
-                <button type="submit" name="status" value="accepted">Accept</button>
-                <button type="submit" name="status" value="declined">Decline</button>
-            </form>
-        {{end}}
-    {{else}}
-        <p>No interview requests yet.</p>
-    {{end}}
-
-    <a href="/logout">Logout</a>
+    <!-- Upload Resume Modal -->
+    <div class="modal fade" id="uploadResumeModal" tabindex="-1" aria-labelledby="uploadResumeModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadResumeModalLabel">Upload Resume</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form action="/applicant/upload-resume" method="POST" enctype="multipart/form-data">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="resume" class="form-label">Select Resume</label>
+                            <input type="file" class="form-control" id="resume" name="resume" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Upload</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

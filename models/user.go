@@ -55,3 +55,12 @@ type Interview struct {
 	Status      string
 	ScheduledAt time.Time
 }
+
+type UserWithCompany struct {
+	ID        string
+	Email     string
+	Name      string
+	Role      Role
+	CompanyID string
+	Company   Company
+}

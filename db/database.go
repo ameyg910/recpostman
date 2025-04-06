@@ -119,7 +119,7 @@ func InitDB() {
         job_id INTEGER REFERENCES jobs(id),
         applicant_id TEXT REFERENCES users(id),
         recruiter_id TEXT REFERENCES users(id),
-        status TEXT DEFAULT 'requested', -- requested, accepted, declined
+        status TEXT DEFAULT 'requested',
         scheduled_at TIMESTAMP
     );`
 	_, err = DB.Exec(interviewQuery)
@@ -127,7 +127,7 @@ func InitDB() {
 		log.Fatal("Error creating interviews table: ", err)
 	}
 
-	log.Println("Connected to Postgre inhabitsSQL and initialized tables")
+	log.Println("Connected to PostgreSQL and initialized tables")
 }
 
 func SaveUser(user *models.User) error {
@@ -143,7 +143,7 @@ func SaveUser(user *models.User) error {
         approved = EXCLUDED.approved,
         resume = EXCLUDED.resume;`
 	skillsJSON, _ := json.Marshal(user.Skills)
-	approved := user.Role != models.Recruiter
+	approved := user.Role != models.Recruiter // Default approved to true unless recruiter
 	_, err := DB.Exec(query, user.ID, user.Email, user.Name, user.Role, skillsJSON, user.CompanyID, approved, user.Resume)
 	return err
 }
@@ -196,17 +196,11 @@ func GetCompany(id int) (*models.Company, error) {
 	return &company, nil
 }
 
-func GetUnapprovedRecruitersWithCompanies() ([]struct {
-	UserID       string
-	Email        string
-	Name         string
-	CompanyID    int
-	CompanyTitle string
-}, error) {
+func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
 	query := `
-    SELECT u.id, u.email, u.name, u.company_id, c.title
+    SELECT u.id, u.email, u.name, u.role, u.company_id, c.id, c.title, c.description, c.logo, c.approved
     FROM users u
-    JOIN companies c ON u.company_id = c.id
+    JOIN companies c ON u.company_id = c.id::TEXT
     WHERE u.role = 'recruiter' AND u.approved = FALSE AND c.approved = FALSE;`
 	rows, err := DB.Query(query)
 	if err != nil {
@@ -214,22 +208,10 @@ func GetUnapprovedRecruitersWithCompanies() ([]struct {
 	}
 	defer rows.Close()
 
-	var recruiters []struct {
-		UserID       string
-		Email        string
-		Name         string
-		CompanyID    int
-		CompanyTitle string
-	}
+	var recruiters []models.UserWithCompany
 	for rows.Next() {
-		var r struct {
-			UserID       string
-			Email        string
-			Name         string
-			CompanyID    int
-			CompanyTitle string
-		}
-		err := rows.Scan(&r.UserID, &r.Email, &r.Name, &r.CompanyID, &r.CompanyTitle)
+		var r models.UserWithCompany
+		err := rows.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CompanyID, &r.Company.ID, &r.Company.Title, &r.Company.Description, &r.Company.Logo, &r.Company.Approved)
 		if err != nil {
 			return nil, err
 		}

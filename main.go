@@ -55,7 +55,22 @@ func main() {
 	r.Static("/uploads", "./uploads")
 
 	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "Welcome to the Recruitment Portal!")
+		session := sessions.Default(c)
+		userID := session.Get("user_id")
+		var name string
+		if userID != nil {
+			user, err := db.GetUser(userID.(string))
+			if err != nil {
+				log.Println("Failed to fetch user for home page:", err)
+				c.String(http.StatusInternalServerError, "Error fetching user")
+				return
+			}
+			name = user.Name
+		}
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"UserID": userID,
+			"Name":   name,
+		})
 	})
 	r.GET("/auth/google/login", handleGoogleLogin)
 	r.GET("/auth/google/callback", handleGoogleCallback)
@@ -120,7 +135,7 @@ func handleGoogleCallback(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Failed to read response: "+err.Error())
 		return
 	}
-	log.Println("Raw response from Google:", string(data)) // Log the raw response
+	log.Println("Raw response from Google:", string(data))
 
 	var userInfo struct {
 		ID    string `json:"id"`
@@ -613,11 +628,44 @@ func handleApproveRecruiter(c *gin.Context) {
 	}
 	c.Redirect(http.StatusFound, "/admin/approve-recruiters")
 }
+func handleSearchApplicantsForm(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
 
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+
+	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
+		"Name": user.Name,
+	})
+}
 func handleSearchApplicants(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
+
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+
 	skills := c.PostFormArray("skills")
 	if len(skills) == 0 {
-		c.String(http.StatusBadRequest, "At least one skill is required")
+		c.HTML(http.StatusBadRequest, "search_applicants.html", gin.H{
+			"Name":    user.Name,
+			"Message": "At least one skill is required",
+		})
 		return
 	}
 	applicants, err := db.SearchApplicantsBySkills(skills)
@@ -626,7 +674,9 @@ func handleSearchApplicants(c *gin.Context) {
 		return
 	}
 	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
-		"Applicants": applicants,
+		"Name":             user.Name,
+		"Applicants":       applicants,
+		"ApplicantsLoaded": true, // Indicate search was performed
 	})
 }
 
