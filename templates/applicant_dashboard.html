@@ -25,6 +25,22 @@
                 <button class="btn btn-primary btn-custom" data-bs-toggle="modal" data-bs-target="#uploadResumeModal">Upload Resume</button>
             </div>
         </div>
+        <!-- Display Uploaded Resume -->
+        {{if .Resume}}
+            <div class="row mt-2">
+                <div class="col-md-12">
+                    <p>Uploaded Resume: <a href="{{.Resume}}" target="_blank">{{.Resume}}</a></p>
+                </div>
+            </div>
+        {{end}}
+        <!-- Display Error Message -->
+        {{if .Message}}
+            <div class="row mt-2">
+                <div class="col-md-12">
+                    <div class="alert alert-danger">{{.Message}}</div>
+                </div>
+            </div>
+        {{end}}
         {{if .Jobs}}
             <h3 class="mt-4">Available Jobs</h3>
             <table class="table table-striped">
@@ -45,7 +61,9 @@
                             <td>
                                 <form action="/applicant/apply-job" method="POST">
                                     <input type="hidden" name="job_id" value="{{.ID}}">
-                                    <button type="submit" class="btn btn-success btn-custom">Apply</button>
+                                    <button type="submit" class="btn btn-success btn-custom" {{if or (not $.Resume) (not $.Skills)}}disabled{{end}}>
+                                        Apply
+                                    </button>
                                 </form>
                             </td>
                         </tr>

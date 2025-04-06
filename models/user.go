@@ -36,15 +36,17 @@ type Job struct {
 	Skills      []string
 	CompanyID   int
 	PostedBy    string
-	CreatedAt   time.Time
+	CreatedAt   time.Time // Changed back from PostedAt to match original
 }
 
 type Application struct {
 	ID          int
 	JobID       int
 	ApplicantID string
+	Resume      string // Added
 	Status      string
 	AppliedAt   time.Time
+	JobTitle    string // Added for display purposes
 }
 
 type Interview struct {

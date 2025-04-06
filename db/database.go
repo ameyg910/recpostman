@@ -3,178 +3,176 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
-
 	"rec_postman/models"
 
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
 
 var DB *sql.DB
 
 func InitDB() {
-	connStr := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_NAME"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-	)
-
-	var err error
-	DB, err = sql.Open("postgres", connStr)
+	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error opening database: ", err)
+		log.Fatal("Error loading .env file: ", err)
 	}
-	if err = DB.Ping(); err != nil {
+
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		log.Fatal("DATABASE_URL not set in .env")
+	}
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
 		log.Fatal("Error connecting to database: ", err)
 	}
 
-	// Users table with resume column
-	query := `
-    CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        skills JSONB,
-        company_id TEXT,
-        approved BOOLEAN DEFAULT FALSE,
-        resume TEXT
-    );`
-	_, err = DB.Exec(query)
+	err = db.Ping()
+	if err != nil {
+		log.Fatal("Error pinging database: ", err)
+	}
+
+	DB = db
+	log.Println("Database connection established")
+
+	// Create tables
+	userQuery := `
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		name TEXT,
+		role TEXT,
+		company_id TEXT,
+		skills JSONB,
+		resume TEXT,
+		approved BOOLEAN DEFAULT FALSE
+	);`
+	_, err = DB.Exec(userQuery)
 	if err != nil {
 		log.Fatal("Error creating users table: ", err)
 	}
-	alterQuery := `
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM information_schema.columns 
-            WHERE table_name = 'users' 
-            AND column_name = 'resume'
-        ) THEN
-            ALTER TABLE users ADD COLUMN resume TEXT;
-        END IF;
-    END;
-    $$;`
-	_, err = DB.Exec(alterQuery)
-	if err != nil {
-		log.Println("Error adding resume column (might already exist):", err)
-	} else {
-		log.Println("Added resume column to users table")
-	}
 
-	// Companies table
 	companyQuery := `
-    CREATE TABLE IF NOT EXISTS companies (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        description TEXT,
-        logo TEXT,
-        approved BOOLEAN DEFAULT FALSE
-    );`
+	CREATE TABLE IF NOT EXISTS companies (
+		id SERIAL PRIMARY KEY,
+		title TEXT NOT NULL,
+		description TEXT,
+		logo TEXT,
+		approved BOOLEAN DEFAULT FALSE
+	);`
 	_, err = DB.Exec(companyQuery)
 	if err != nil {
 		log.Fatal("Error creating companies table: ", err)
 	}
 
-	// Jobs table
 	jobQuery := `
-    CREATE TABLE IF NOT EXISTS jobs (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        skills JSONB,
-        company_id INTEGER REFERENCES companies(id),
-        posted_by TEXT REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );`
+	CREATE TABLE IF NOT EXISTS jobs (
+		id SERIAL PRIMARY KEY,
+		title TEXT NOT NULL,
+		description TEXT,
+		skills JSONB,
+		company_id INTEGER REFERENCES companies(id),
+		posted_by TEXT REFERENCES users(id),
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
 	_, err = DB.Exec(jobQuery)
 	if err != nil {
 		log.Fatal("Error creating jobs table: ", err)
 	}
 
-	// Applications table
 	appQuery := `
-    CREATE TABLE IF NOT EXISTS applications (
-        id SERIAL PRIMARY KEY,
-        job_id INTEGER REFERENCES jobs(id),
-        applicant_id TEXT REFERENCES users(id),
-        status TEXT DEFAULT 'pending',
-        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );`
+	CREATE TABLE IF NOT EXISTS applications (
+		id SERIAL PRIMARY KEY,
+		job_id INTEGER REFERENCES jobs(id),
+		applicant_id TEXT REFERENCES users(id),
+		resume TEXT,
+		status TEXT DEFAULT 'pending',
+		applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
 	_, err = DB.Exec(appQuery)
 	if err != nil {
 		log.Fatal("Error creating applications table: ", err)
 	}
 
-	// Interviews table
 	interviewQuery := `
-    CREATE TABLE IF NOT EXISTS interviews (
-        id SERIAL PRIMARY KEY,
-        job_id INTEGER REFERENCES jobs(id),
-        applicant_id TEXT REFERENCES users(id),
-        recruiter_id TEXT REFERENCES users(id),
-        status TEXT DEFAULT 'requested',
-        scheduled_at TIMESTAMP
-    );`
+	CREATE TABLE IF NOT EXISTS interviews (
+		id SERIAL PRIMARY KEY,
+		job_id INTEGER REFERENCES jobs(id),
+		applicant_id TEXT REFERENCES users(id),
+		recruiter_id TEXT REFERENCES users(id),
+		scheduled_at TIMESTAMP,
+		status TEXT DEFAULT 'requested'
+	);`
 	_, err = DB.Exec(interviewQuery)
 	if err != nil {
 		log.Fatal("Error creating interviews table: ", err)
 	}
 
-	log.Println("Connected to PostgreSQL and initialized tables")
-}
-
-func SaveUser(user *models.User) error {
-	query := `
-    INSERT INTO users (id, email, name, role, skills, company_id, approved, resume)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (id) DO UPDATE
-    SET email = EXCLUDED.email,
-        name = EXCLUDED.name,
-        role = EXCLUDED.role,
-        skills = EXCLUDED.skills,
-        company_id = EXCLUDED.company_id,
-        approved = EXCLUDED.approved,
-        resume = EXCLUDED.resume;`
-	skillsJSON, _ := json.Marshal(user.Skills)
-	approved := user.Role != models.Recruiter // Default approved to true unless recruiter
-	_, err := DB.Exec(query, user.ID, user.Email, user.Name, user.Role, skillsJSON, user.CompanyID, approved, user.Resume)
-	return err
+	// Migration to add resume column if it doesn't exist
+	alterQuery := `
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 
+			FROM information_schema.columns 
+			WHERE table_name = 'applications' 
+			AND column_name = 'resume'
+		) THEN
+			ALTER TABLE applications ADD COLUMN resume TEXT;
+		END IF;
+	END;
+	$$;`
+	_, err = DB.Exec(alterQuery)
+	if err != nil {
+		log.Println("Error adding resume column to applications (might already exist):", err)
+	} else {
+		log.Println("Added resume column to applications table")
+	}
 }
 
 func GetUser(id string) (*models.User, error) {
-	query := `SELECT id, email, name, role, skills, company_id, approved, resume FROM users WHERE id = $1;`
-	row := DB.QueryRow(query, id)
-
-	var user models.User
+	user := &models.User{}
 	var skillsJSON []byte
-	err := row.Scan(&user.ID, &user.Email, &user.Name, &user.Role, &skillsJSON, &user.CompanyID, &user.Approved, &user.Resume)
+	err := DB.QueryRow("SELECT id, email, name, role, company_id, skills, resume, approved FROM users WHERE id = $1", id).
+		Scan(&user.ID, &user.Email, &user.Name, &user.Role, &user.CompanyID, &skillsJSON, &user.Resume, &user.Approved)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
-
-	if len(skillsJSON) > 0 {
-		json.Unmarshal(skillsJSON, &user.Skills)
+	if skillsJSON != nil {
+		err = json.Unmarshal(skillsJSON, &user.Skills)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return &user, nil
+	return user, nil
+}
+
+func SaveUser(user *models.User) error {
+	skillsJSON, err := json.Marshal(user.Skills)
+	if err != nil {
+		return err
+	}
+	_, err = DB.Exec(`
+		INSERT INTO users (id, email, name, role, company_id, skills, resume, approved)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (id) DO UPDATE
+		SET email = $2, name = $3, role = $4, company_id = $5, skills = $6, resume = $7, approved = $8`,
+		user.ID, user.Email, user.Name, user.Role, user.CompanyID, skillsJSON, user.Resume, user.Approved)
+	return err
 }
 
 func SaveCompany(company *models.Company) (int, error) {
-	query := `
-    INSERT INTO companies (title, description, logo, approved)
-    VALUES ($1, $2, $3, $4)
-    RETURNING id;`
 	var id int
-	err := DB.QueryRow(query, company.Title, company.Description, company.Logo, company.Approved).Scan(&id)
+	err := DB.QueryRow(`
+		INSERT INTO companies (title, description, logo, approved)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id`,
+		company.Title, company.Description, company.Logo, company.Approved).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -182,50 +180,180 @@ func SaveCompany(company *models.Company) (int, error) {
 }
 
 func GetCompany(id int) (*models.Company, error) {
-	query := `SELECT id, title, description, logo, approved FROM companies WHERE id = $1;`
-	row := DB.QueryRow(query, id)
-
-	var company models.Company
-	err := row.Scan(&company.ID, &company.Title, &company.Description, &company.Logo, &company.Approved)
+	company := &models.Company{}
+	err := DB.QueryRow("SELECT id, title, description, logo, approved FROM companies WHERE id = $1", id).
+		Scan(&company.ID, &company.Title, &company.Description, &company.Logo, &company.Approved)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return &company, nil
+	return company, nil
 }
 
-func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
-	query := `
-    SELECT u.id, u.email, u.name, u.role, u.company_id, c.id, c.title, c.description, c.logo, c.approved
-    FROM users u
-    JOIN companies c ON u.company_id = c.id::TEXT
-    WHERE u.role = 'recruiter' AND u.approved = FALSE AND c.approved = FALSE;`
-	rows, err := DB.Query(query)
+func SaveJob(job *models.Job) (int, error) {
+	skillsJSON, err := json.Marshal(job.Skills)
+	if err != nil {
+		return 0, err
+	}
+	var id int
+	err = DB.QueryRow(`
+		INSERT INTO jobs (title, description, skills, company_id, posted_by)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`,
+		job.Title, job.Description, skillsJSON, job.CompanyID, job.PostedBy).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func GetJobsByRecruiter(recruiterID string) ([]models.Job, error) {
+	rows, err := DB.Query("SELECT id, title, description, skills, company_id, posted_by, created_at FROM jobs WHERE posted_by = $1", recruiterID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var recruiters []models.UserWithCompany
+	var jobs []models.Job
 	for rows.Next() {
-		var r models.UserWithCompany
-		err := rows.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CompanyID, &r.Company.ID, &r.Company.Title, &r.Company.Description, &r.Company.Logo, &r.Company.Approved)
+		var job models.Job
+		var skillsJSON []byte
+		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
-		recruiters = append(recruiters, r)
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &job.Skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+		jobs = append(jobs, job)
 	}
-	return recruiters, nil
+	return jobs, nil
+}
+
+func GetAllJobs() ([]models.Job, error) {
+	rows, err := DB.Query("SELECT id, title, description, skills, company_id, posted_by, created_at FROM jobs")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var job models.Job
+		var skillsJSON []byte
+		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &job.Skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func SaveApplication(application *models.Application) (int, error) {
+	var id int
+	err := DB.QueryRow(`
+		INSERT INTO applications (job_id, applicant_id, resume, status)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id`,
+		application.JobID, application.ApplicantID, application.Resume, application.Status).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func GetApplicationsByApplicant(applicantID string) ([]models.Application, error) {
+	rows, err := DB.Query("SELECT id, job_id, applicant_id, resume, status, applied_at FROM applications WHERE applicant_id = $1", applicantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var applications []models.Application
+	for rows.Next() {
+		var app models.Application
+		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &app.Resume, &app.Status, &app.AppliedAt)
+		if err != nil {
+			return nil, err
+		}
+		applications = append(applications, app)
+	}
+	return applications, nil
+}
+
+func GetApplicationsByRecruiter(recruiterID string) ([]models.Application, error) {
+	query := `
+	SELECT a.id, a.job_id, a.applicant_id, a.resume, a.status, a.applied_at, j.title
+	FROM applications a
+	JOIN jobs j ON a.job_id = j.id
+	WHERE j.posted_by = $1;`
+	rows, err := DB.Query(query, recruiterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var applications []models.Application
+	for rows.Next() {
+		var app models.Application
+		var jobTitle string
+		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &app.Resume, &app.Status, &app.AppliedAt, &jobTitle)
+		if err != nil {
+			return nil, err
+		}
+		app.JobTitle = jobTitle
+		applications = append(applications, app)
+	}
+	return applications, nil
+}
+
+func GetRecommendedJobs(skills []string) ([]models.Job, error) {
+	rows, err := DB.Query("SELECT id, title, description, skills, company_id, posted_by, created_at FROM jobs")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var job models.Job
+		var skillsJSON []byte
+		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &job.Skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, skill := range skills {
+			for _, jobSkill := range job.Skills {
+				if skill == jobSkill {
+					jobs = append(jobs, job)
+					break
+				}
+			}
+		}
+	}
+	return jobs, nil
 }
 
 func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
-	query := `SELECT id, email, name, role, skills, company_id, approved, resume 
-             FROM users 
-             WHERE role = 'applicant' AND skills @> $1::jsonb;`
-	skillsJSON, _ := json.Marshal(skills)
-	rows, err := DB.Query(query, skillsJSON)
+	rows, err := DB.Query("SELECT id, email, name, skills FROM users WHERE role = 'applicant'")
 	if err != nil {
 		return nil, err
 	}
@@ -235,156 +363,35 @@ func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
 	for rows.Next() {
 		var user models.User
 		var skillsJSON []byte
-		err := rows.Scan(&user.ID, &user.Email, &user.Name, &user.Role, &skillsJSON, &user.CompanyID, &user.Approved, &user.Resume)
+		err := rows.Scan(&user.ID, &user.Email, &user.Name, &skillsJSON)
 		if err != nil {
 			return nil, err
 		}
-		if len(skillsJSON) > 0 {
-			json.Unmarshal(skillsJSON, &user.Skills)
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &user.Skills)
+			if err != nil {
+				return nil, err
+			}
 		}
-		applicants = append(applicants, user)
+		for _, skill := range skills {
+			for _, userSkill := range user.Skills {
+				if skill == userSkill {
+					applicants = append(applicants, user)
+					break
+				}
+			}
+		}
 	}
 	return applicants, nil
 }
 
-func SaveJob(job *models.Job) (int, error) {
-	query := `
-    INSERT INTO jobs (title, description, skills, company_id, posted_by)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING id;`
-	skillsJSON, _ := json.Marshal(job.Skills)
-	var id int
-	err := DB.QueryRow(query, job.Title, job.Description, skillsJSON, job.CompanyID, job.PostedBy).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
-}
-
-func GetJobsByRecruiter(recruiterID string) ([]models.Job, error) {
-	query := `
-    SELECT id, title, description, skills, company_id, posted_by, created_at
-    FROM jobs
-    WHERE posted_by = $1;`
-	rows, err := DB.Query(query, recruiterID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var jobs []models.Job
-	for rows.Next() {
-		var job models.Job
-		var skillsJSON []byte
-		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		if len(skillsJSON) > 0 {
-			json.Unmarshal(skillsJSON, &job.Skills)
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, nil
-}
-
-func GetAllJobs() ([]models.Job, error) {
-	query := `
-    SELECT id, title, description, skills, company_id, posted_by, created_at
-    FROM jobs;`
-	rows, err := DB.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var jobs []models.Job
-	for rows.Next() {
-		var job models.Job
-		var skillsJSON []byte
-		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		if len(skillsJSON) > 0 {
-			json.Unmarshal(skillsJSON, &job.Skills)
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, nil
-}
-
-func GetRecommendedJobs(skills []string) ([]models.Job, error) {
-	query := `
-    SELECT id, title, description, skills, company_id, posted_by, created_at
-    FROM jobs
-    WHERE skills @> $1::jsonb;`
-	skillsJSON, _ := json.Marshal(skills)
-	rows, err := DB.Query(query, skillsJSON)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var jobs []models.Job
-	for rows.Next() {
-		var job models.Job
-		var skillsJSON []byte
-		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		if len(skillsJSON) > 0 {
-			json.Unmarshal(skillsJSON, &job.Skills)
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, nil
-}
-
-func SaveApplication(application *models.Application) (int, error) {
-	query := `
-    INSERT INTO applications (job_id, applicant_id, status)
-    VALUES ($1, $2, $3)
-    RETURNING id;`
-	var id int
-	err := DB.QueryRow(query, application.JobID, application.ApplicantID, application.Status).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
-}
-
-func GetApplicationsByApplicant(applicantID string) ([]models.Application, error) {
-	query := `
-    SELECT id, job_id, applicant_id, status, applied_at
-    FROM applications
-    WHERE applicant_id = $1;`
-	rows, err := DB.Query(query, applicantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var applications []models.Application
-	for rows.Next() {
-		var app models.Application
-		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &app.Status, &app.AppliedAt)
-		if err != nil {
-			return nil, err
-		}
-		applications = append(applications, app)
-	}
-	return applications, nil
-}
-
 func SaveInterview(interview *models.Interview) (int, error) {
-	query := `
-    INSERT INTO interviews (job_id, applicant_id, recruiter_id, status, scheduled_at)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING id;`
 	var id int
-	err := DB.QueryRow(query, interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.Status, interview.ScheduledAt).Scan(&id)
+	err := DB.QueryRow(`
+		INSERT INTO interviews (job_id, applicant_id, recruiter_id, scheduled_at, status)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`,
+		interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.ScheduledAt, interview.Status).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -392,11 +399,7 @@ func SaveInterview(interview *models.Interview) (int, error) {
 }
 
 func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
-	query := `
-    SELECT id, job_id, applicant_id, recruiter_id, status, scheduled_at
-    FROM interviews
-    WHERE applicant_id = $1;`
-	rows, err := DB.Query(query, applicantID)
+	rows, err := DB.Query("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status FROM interviews WHERE applicant_id = $1", applicantID)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +408,7 @@ func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
 	var interviews []models.Interview
 	for rows.Next() {
 		var interview models.Interview
-		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.Status, &interview.ScheduledAt)
+		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status)
 		if err != nil {
 			return nil, err
 		}
@@ -414,8 +417,31 @@ func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
 	return interviews, nil
 }
 
-func UpdateInterviewStatus(interviewID int, status string) error {
-	query := `UPDATE interviews SET status = $1 WHERE id = $2;`
-	_, err := DB.Exec(query, status, interviewID)
+func UpdateInterviewStatus(id int, status string) error {
+	_, err := DB.Exec("UPDATE interviews SET status = $1 WHERE id = $2", status, id)
 	return err
+}
+
+func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
+	rows, err := DB.Query(`
+		SELECT u.id, u.email, u.name, u.role, u.company_id, c.id, c.title, c.description, c.logo
+		FROM users u
+		JOIN companies c ON u.company_id = c.id::text
+		WHERE u.role = 'recruiter' AND u.approved = FALSE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var recruiters []models.UserWithCompany
+	for rows.Next() {
+		var r models.UserWithCompany
+		err := rows.Scan(&r.ID, &r.Email, &r.Name, &r.Role, &r.CompanyID, &r.Company.ID, &r.Company.Title, &r.Company.Description, &r.Company.Logo)
+		if err != nil {
+			return nil, err
+		}
+		r.Company.Approved = false
+		recruiters = append(recruiters, r)
+	}
+	return recruiters, nil
 }

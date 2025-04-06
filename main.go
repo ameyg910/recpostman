@@ -344,10 +344,16 @@ func handleDashboard(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to fetch jobs: "+err.Error())
 			return
 		}
+		applications, err := db.GetApplicationsByRecruiter(user.ID)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to fetch applications: "+err.Error())
+			return
+		}
 		c.HTML(http.StatusOK, "recruiter_dashboard.html", gin.H{
-			"Name":    user.Name,
-			"Company": company,
-			"Jobs":    jobs,
+			"Name":         user.Name,
+			"Company":      company,
+			"Jobs":         jobs,
+			"Applications": applications,
 		})
 	case models.Applicant:
 		jobs, err := db.GetAllJobs()
@@ -488,6 +494,23 @@ func handleApplyJob(c *gin.Context) {
 		return
 	}
 
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+	if user.Resume == "" || len(user.Skills) == 0 {
+		jobs, _ := db.GetAllJobs() // Simplified, add error handling if needed
+		c.HTML(http.StatusBadRequest, "applicant_dashboard.html", gin.H{
+			"Name":    user.Name,
+			"Jobs":    jobs,
+			"Skills":  user.Skills,
+			"Resume":  user.Resume,
+			"Message": "Please upload a resume and add skills before applying.",
+		})
+		return
+	}
+
 	jobIDStr := c.PostForm("job_id")
 	jobID, err := strconv.Atoi(jobIDStr)
 	if err != nil {
@@ -498,6 +521,7 @@ func handleApplyJob(c *gin.Context) {
 	application := models.Application{
 		JobID:       jobID,
 		ApplicantID: userID.(string),
+		Resume:      user.Resume,
 		Status:      "pending",
 	}
 
