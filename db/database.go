@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"rec_postman/models"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -103,7 +104,8 @@ func InitDB() {
 		applicant_id TEXT REFERENCES users(id),
 		recruiter_id TEXT REFERENCES users(id),
 		scheduled_at TIMESTAMP,
-		status TEXT DEFAULT 'requested'
+		status TEXT DEFAULT 'requested',
+		meet_link TEXT
 	);`
 	_, err = DB.Exec(interviewQuery)
 	if err != nil {
@@ -129,6 +131,27 @@ func InitDB() {
 		log.Println("Error adding resume column to applications (might already exist):", err)
 	} else {
 		log.Println("Added resume column to applications table")
+	}
+
+	// Migration to add meet_link column if it doesn't exist
+	alterMeetLinkQuery := `
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 
+			FROM information_schema.columns 
+			WHERE table_name = 'interviews' 
+			AND column_name = 'meet_link'
+		) THEN
+			ALTER TABLE interviews ADD COLUMN meet_link TEXT;
+		END IF;
+	END;
+	$$;`
+	_, err = DB.Exec(alterMeetLinkQuery)
+	if err != nil {
+		log.Println("Error adding meet_link column to interviews (might already exist):", err)
+	} else {
+		log.Println("Added meet_link column to interviews table")
 	}
 }
 
@@ -416,10 +439,10 @@ func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
 func SaveInterview(interview *models.Interview) (int, error) {
 	var id int
 	err := DB.QueryRow(`
-		INSERT INTO interviews (job_id, applicant_id, recruiter_id, scheduled_at, status)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO interviews (job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`,
-		interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.ScheduledAt, interview.Status).Scan(&id)
+		interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.ScheduledAt, interview.Status, interview.MeetLink).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -427,7 +450,7 @@ func SaveInterview(interview *models.Interview) (int, error) {
 }
 
 func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
-	rows, err := DB.Query("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status FROM interviews WHERE applicant_id = $1", applicantID)
+	rows, err := DB.Query("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link FROM interviews WHERE applicant_id = $1", applicantID)
 	if err != nil {
 		return nil, err
 	}
@@ -436,18 +459,67 @@ func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
 	var interviews []models.Interview
 	for rows.Next() {
 		var interview models.Interview
-		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status)
+		var meetLink sql.NullString
+		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status, &meetLink)
 		if err != nil {
 			return nil, err
+		}
+		if meetLink.Valid {
+			interview.MeetLink = meetLink.String
+		} else {
+			interview.MeetLink = ""
 		}
 		interviews = append(interviews, interview)
 	}
 	return interviews, nil
 }
 
-func UpdateInterviewStatus(id int, status string) error {
-	_, err := DB.Exec("UPDATE interviews SET status = $1 WHERE id = $2", status, id)
+func UpdateInterviewStatus(id int, status string, alternativeTime time.Time) error {
+	if alternativeTime.IsZero() {
+		_, err := DB.Exec("UPDATE interviews SET status = $1 WHERE id = $2", status, id)
+		return err
+	}
+	_, err := DB.Exec("UPDATE interviews SET status = $1, scheduled_at = $2 WHERE id = $3", status, alternativeTime, id)
 	return err
+}
+
+func GetInterview(id int) (*models.Interview, error) {
+	interview := &models.Interview{}
+	var meetLink sql.NullString
+	err := DB.QueryRow("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link FROM interviews WHERE id = $1", id).
+		Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status, &meetLink)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if meetLink.Valid {
+		interview.MeetLink = meetLink.String
+	} else {
+		interview.MeetLink = ""
+	}
+	return interview, nil
+}
+
+func GetJob(id int) (*models.Job, error) {
+	job := &models.Job{}
+	var skillsJSON []byte
+	err := DB.QueryRow("SELECT id, title, description, skills, company_id, posted_by, created_at FROM jobs WHERE id = $1", id).
+		Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if skillsJSON != nil {
+		err = json.Unmarshal(skillsJSON, &job.Skills)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return job, nil
 }
 
 func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {

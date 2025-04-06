@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"path/filepath"
 	"rec_postman/db"
@@ -23,6 +25,8 @@ import (
 
 var (
 	googleOauthConfig *oauth2.Config
+	smtpAuth          smtp.Auth
+	smtpAddr          = "smtp.gmail.com:587"
 )
 
 func init() {
@@ -35,12 +39,17 @@ func init() {
 		RedirectURL:  "http://localhost:8080/auth/google/callback",
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "openid"},
 		Endpoint:     google.Endpoint,
 	}
 
 	if googleOauthConfig.ClientID == "" || googleOauthConfig.ClientSecret == "" {
 		log.Fatal("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set in .env")
+	}
+
+	smtpAuth = smtp.PlainAuth("", os.Getenv("SMTP_EMAIL"), os.Getenv("SMTP_APP_PASSWORD"), "smtp.gmail.com")
+	if os.Getenv("SMTP_EMAIL") == "" || os.Getenv("SMTP_APP_PASSWORD") == "" {
+		log.Fatal("SMTP_EMAIL or SMTP_APP_PASSWORD not set in .env")
 	}
 
 	db.InitDB()
@@ -137,7 +146,6 @@ func handleGoogleCallback(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	// Log response details for debugging
 	log.Println("Response Status:", resp.Status)
 	log.Println("Content-Type:", resp.Header.Get("Content-Type"))
 
@@ -149,7 +157,6 @@ func handleGoogleCallback(c *gin.Context) {
 	}
 	log.Println("Raw response from Google:", string(data))
 
-	// Check if response is JSON (allow charset variations)
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
 		log.Println("Unexpected content type:", resp.Header.Get("Content-Type"))
 		c.String(http.StatusInternalServerError, "Unexpected response format from Google")
@@ -522,7 +529,7 @@ func handleApplyJob(c *gin.Context) {
 		return
 	}
 	if user.Resume == "" || len(user.Skills) == 0 {
-		jobs, _ := db.GetAllJobs() // Simplified, add error handling if needed
+		jobs, _ := db.GetAllJobs()
 		c.HTML(http.StatusBadRequest, "applicant_dashboard.html", gin.H{
 			"Name":    user.Name,
 			"Jobs":    jobs,
@@ -601,7 +608,7 @@ func handleUploadResume(c *gin.Context) {
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch user: " + err.Error()})
 		return
 	}
-	user.Resume = "/uploads/" + filename // Store relative URL path
+	user.Resume = "/uploads/" + filename
 	log.Println("Updating user with resume:", user.Resume)
 	if err := db.SaveUser(user); err != nil {
 		log.Println("Failed to update user:", err)
@@ -638,18 +645,35 @@ func handleRequestInterview(c *gin.Context) {
 		return
 	}
 
+	// Mock Google Meet link (replace with actual API integration if needed)
+	meetLink := "https://meet.google.com/abc-xyz-" + strconv.Itoa(int(time.Now().UnixNano()))
+
 	interview := models.Interview{
 		JobID:       jobID,
 		ApplicantID: applicantID,
 		RecruiterID: userID.(string),
 		Status:      "requested",
 		ScheduledAt: scheduledAt,
+		MeetLink:    meetLink,
 	}
 
-	_, err = db.SaveInterview(&interview)
+	interviewID, err := db.SaveInterview(&interview)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to request interview: "+err.Error())
 		return
+	}
+
+	// Send notification asynchronously
+	applicant, err := db.GetUser(applicantID)
+	if err != nil {
+		log.Println("Failed to fetch applicant for notification:", err)
+	} else {
+		job, err := db.GetJob(jobID)
+		if err != nil {
+			log.Println("Failed to fetch job for notification:", err)
+		} else {
+			go sendInterviewNotification(applicant.Email, job.Title, scheduledAt, meetLink, interviewID)
+		}
 	}
 
 	c.Redirect(http.StatusFound, "/dashboard")
@@ -665,18 +689,94 @@ func handleUpdateInterview(c *gin.Context) {
 
 	interviewIDStr := c.PostForm("interview_id")
 	status := c.PostForm("status")
+	alternativeTimeStr := c.PostForm("alternative_time")
+
 	interviewID, err := strconv.Atoi(interviewIDStr)
 	if err != nil || (status != "accepted" && status != "declined") {
 		c.String(http.StatusBadRequest, "Invalid interview ID or status")
 		return
 	}
 
-	if err := db.UpdateInterviewStatus(interviewID, status); err != nil {
+	var alternativeTime time.Time
+	if status == "declined" && alternativeTimeStr != "" {
+		alternativeTime, err = time.Parse("2006-01-02 15:04", alternativeTimeStr)
+		if err != nil {
+			c.String(http.StatusBadRequest, "Invalid alternative time format (use YYYY-MM-DD HH:MM)")
+			return
+		}
+	}
+
+	interview, err := db.GetInterview(interviewID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch interview: "+err.Error())
+		return
+	}
+
+	if err := db.UpdateInterviewStatus(interviewID, status, alternativeTime); err != nil {
 		c.String(http.StatusInternalServerError, "Failed to update interview: "+err.Error())
 		return
 	}
 
+	// Notify recruiter if declined with alternative time
+	if status == "declined" && !alternativeTime.IsZero() {
+		recruiter, err := db.GetUser(interview.RecruiterID)
+		if err != nil {
+			log.Println("Failed to fetch recruiter for notification:", err)
+		} else {
+			job, err := db.GetJob(interview.JobID)
+			if err != nil {
+				log.Println("Failed to fetch job for notification:", err)
+			} else {
+				go sendAlternativeTimeNotification(recruiter.Email, job.Title, userID.(string), alternativeTime)
+			}
+		}
+	}
+
 	c.Redirect(http.StatusFound, "/dashboard")
+}
+
+func sendInterviewNotification(toEmail, jobTitle string, scheduledAt time.Time, meetLink string, interviewID int) {
+	msg := []byte(fmt.Sprintf(
+		"Subject: Interview Scheduled for %s\r\n"+
+			"\r\n"+
+			"Dear Applicant,\r\n"+
+			"You have been invited to an interview for the position of %s.\r\n"+
+			"Date & Time: %s\r\n"+
+			"Google Meet Link: %s\r\n"+
+			"Please respond by accepting or declining this interview at: http://localhost:8080/dashboard\r\n"+
+			"Interview ID: %d\r\n"+
+			"\r\n"+
+			"Best regards,\r\n"+
+			"Recruitment Team\r\n",
+		jobTitle, jobTitle, scheduledAt.Format("2006-01-02 15:04"), meetLink, interviewID))
+
+	err := smtp.SendMail(smtpAddr, smtpAuth, os.Getenv("SMTP_EMAIL"), []string{toEmail}, msg)
+	if err != nil {
+		log.Println("Failed to send interview notification:", err)
+	} else {
+		log.Println("Interview notification sent to:", toEmail)
+	}
+}
+
+func sendAlternativeTimeNotification(toEmail, jobTitle, applicantID string, alternativeTime time.Time) {
+	msg := []byte(fmt.Sprintf(
+		"Subject: Applicant Suggested New Time for %s\r\n"+
+			"\r\n"+
+			"Dear Recruiter,\r\n"+
+			"The applicant (ID: %s) has declined the interview for %s and suggested a new time:\r\n"+
+			"New Date & Time: %s\r\n"+
+			"Please review and reschedule at: http://localhost:8080/dashboard\r\n"+
+			"\r\n"+
+			"Best regards,\r\n"+
+			"Recruitment Team\r\n",
+		jobTitle, applicantID, jobTitle, alternativeTime.Format("2006-01-02 15:04")))
+
+	err := smtp.SendMail(smtpAddr, smtpAuth, os.Getenv("SMTP_EMAIL"), []string{toEmail}, msg)
+	if err != nil {
+		log.Println("Failed to send alternative time notification:", err)
+	} else {
+		log.Println("Alternative time notification sent to:", toEmail)
+	}
 }
 
 func requireRole(roles ...models.Role) gin.HandlerFunc {
