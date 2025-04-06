@@ -80,6 +80,7 @@ func main() {
 
 	r.GET("/dashboard", requireRole(models.SuperAdmin, models.Recruiter, models.Applicant), handleDashboard)
 	r.POST("/recruiter/post-job", requireRole(models.Recruiter), handlePostJob)
+	r.GET("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicantsForm)
 	r.POST("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicants)
 	r.POST("/recruiter/request-interview", requireRole(models.Recruiter), handleRequestInterview)
 	r.POST("/applicant/apply-job", requireRole(models.Applicant), handleApplyJob)
@@ -322,7 +323,12 @@ func handleDashboard(c *gin.Context) {
 	switch user.Role {
 	case models.Recruiter:
 		var approved bool
-		db.DB.QueryRow("SELECT approved FROM users WHERE id = $1", user.ID).Scan(&approved)
+		err := db.DB.QueryRow("SELECT approved FROM users WHERE id = $1", user.ID).Scan(&approved)
+		if err != nil {
+			log.Println("Failed to check approval status:", err)
+			c.String(http.StatusInternalServerError, "Failed to check approval status: "+err.Error())
+			return
+		}
 		if !approved {
 			c.String(http.StatusForbidden, "Your recruiter account is pending approval.")
 			return
@@ -419,6 +425,59 @@ func handlePostJob(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/dashboard")
+}
+
+func handleSearchApplicantsForm(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
+
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+
+	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
+		"Name": user.Name,
+	})
+}
+
+func handleSearchApplicants(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
+
+	user, err := db.GetUser(userID.(string))
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
+		return
+	}
+
+	skills := c.PostFormArray("skills")
+	if len(skills) == 0 {
+		c.HTML(http.StatusBadRequest, "search_applicants.html", gin.H{
+			"Name":    user.Name,
+			"Message": "At least one skill is required",
+		})
+		return
+	}
+	applicants, err := db.SearchApplicantsBySkills(skills)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to search applicants: "+err.Error())
+		return
+	}
+	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
+		"Name":             user.Name,
+		"Applicants":       applicants,
+		"ApplicantsLoaded": true,
+	})
 }
 
 func handleApplyJob(c *gin.Context) {
@@ -627,57 +686,6 @@ func handleApproveRecruiter(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusFound, "/admin/approve-recruiters")
-}
-func handleSearchApplicantsForm(c *gin.Context) {
-	session := sessions.Default(c)
-	userID := session.Get("user_id")
-	if userID == nil {
-		c.Redirect(http.StatusFound, "/auth/google/login")
-		return
-	}
-
-	user, err := db.GetUser(userID.(string))
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
-		return
-	}
-
-	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
-		"Name": user.Name,
-	})
-}
-func handleSearchApplicants(c *gin.Context) {
-	session := sessions.Default(c)
-	userID := session.Get("user_id")
-	if userID == nil {
-		c.Redirect(http.StatusFound, "/auth/google/login")
-		return
-	}
-
-	user, err := db.GetUser(userID.(string))
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to fetch user: "+err.Error())
-		return
-	}
-
-	skills := c.PostFormArray("skills")
-	if len(skills) == 0 {
-		c.HTML(http.StatusBadRequest, "search_applicants.html", gin.H{
-			"Name":    user.Name,
-			"Message": "At least one skill is required",
-		})
-		return
-	}
-	applicants, err := db.SearchApplicantsBySkills(skills)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Failed to search applicants: "+err.Error())
-		return
-	}
-	c.HTML(http.StatusOK, "search_applicants.html", gin.H{
-		"Name":             user.Name,
-		"Applicants":       applicants,
-		"ApplicantsLoaded": true, // Indicate search was performed
-	})
 }
 
 func handleLogout(c *gin.Context) {
