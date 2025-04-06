@@ -12,6 +12,12 @@
                 <li>{{.}}</li>
             {{end}}
         </ul>
+        <form method="POST" action="/recruiter/request-interview">
+            <input type="hidden" name="applicant_id" value="{{.ID}}">
+            <label>Job ID: <input type="number" name="job_id"></label>
+            <label>Schedule: <input type="text" name="scheduled_at" placeholder="YYYY-MM-DD HH:MM"></label>
+            <button type="submit">Request Interview</button>
+        </form>
     {{else}}
         <p>No applicants found.</p>
     {{end}}

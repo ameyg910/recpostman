@@ -8,13 +8,32 @@
     <h2>Company: {{.Company.Title}}</h2>
     <p>{{.Company.Description}}</p>
     <p>Logo: <img src="{{.Company.Logo}}" alt="Company Logo" width="100"></p>
+    
+    <h3>Post a Job</h3>
+    <form method="POST" action="/recruiter/post-job">
+        <label>Job Title: <input type="text" name="title"></label><br>
+        <label>Description: <textarea name="description"></textarea></label><br>
+        <label>Skills (comma-separated): <input type="text" name="skills"></label><br>
+        <button type="submit">Post Job</button>
+    </form>
+
+    <h3>Your Job Postings</h3>
+    {{range .Jobs}}
+        <p>{{.Title}} - {{.Description}}</p>
+        <ul>
+            {{range .Skills}}
+                <li>{{.}}</li>
+            {{end}}
+        </ul>
+    {{else}}
+        <p>No jobs posted yet.</p>
+    {{end}}
+
     <h3>Search Applicants by Skills</h3>
     <form method="POST" action="/recruiter/search-applicants">
         <label>Skills (comma-separated): <input type="text" name="skills"></label>
         <button type="submit">Search</button>
     </form>
-    <h3>Job Postings</h3>
-    <p>[Job postings placeholder]</p>
     <a href="/logout">Logout</a>
 </body>
 </html>

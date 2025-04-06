@@ -11,12 +11,69 @@
             <li>{{.}}</li>
         {{end}}
     </ul>
-    <h3>Job Postings</h3>
-    <p>[Job postings placeholder]</p>
-    <h3>Application Status</h3>
-    <p>[Application status placeholder]</p>
+
     <h3>Upload Resume</h3>
-    <p>[Resume upload placeholder]</p>
+    {{if .Resume}}
+        <p>Resume: <a href="{{.Resume}}" target="_blank">{{.Resume}}</a></p>
+    {{end}}
+    <form method="POST" action="/applicant/upload-resume" enctype="multipart/form-data">
+        <label>Resume: <input type="file" name="resume"></label>
+        <button type="submit">Upload</button>
+    </form>
+
+    <h3>Recommended Jobs</h3>
+    {{range .RecommendedJobs}}
+        <p>{{.Title}} - {{.Description}}</p>
+        <ul>
+            {{range .Skills}}
+                <li>{{.}}</li>
+            {{end}}
+        </ul>
+        <form method="POST" action="/applicant/apply-job">
+            <input type="hidden" name="job_id" value="{{.ID}}">
+            <button type="submit">Apply</button>
+        </form>
+    {{else}}
+        <p>No recommended jobs yet.</p>
+    {{end}}
+
+    <h3>All Job Postings</h3>
+    {{range .Jobs}}
+        <p>{{.Title}} - {{.Description}}</p>
+        <ul>
+            {{range .Skills}}
+                <li>{{.}}</li>
+            {{end}}
+        </ul>
+        <form method="POST" action="/applicant/apply-job">
+            <input type="hidden" name="job_id" value="{{.ID}}">
+            <button type="submit">Apply</button>
+        </form>
+    {{else}}
+        <p>No jobs available.</p>
+    {{end}}
+
+    <h3>Your Applications</h3>
+    {{range .Applications}}
+        <p>Job ID: {{.JobID}} - Status: {{.Status}}</p>
+    {{else}}
+        <p>No applications yet.</p>
+    {{end}}
+
+    <h3>Interview Requests</h3>
+    {{range .Interviews}}
+        <p>Job ID: {{.JobID}} - Status: {{.Status}} - Scheduled: {{.ScheduledAt}}</p>
+        {{if eq .Status "requested"}}
+            <form method="POST" action="/applicant/update-interview">
+                <input type="hidden" name="interview_id" value="{{.ID}}">
+                <button type="submit" name="status" value="accepted">Accept</button>
+                <button type="submit" name="status" value="declined">Decline</button>
+            </form>
+        {{end}}
+    {{else}}
+        <p>No interview requests yet.</p>
+    {{end}}
+
     <a href="/logout">Logout</a>
 </body>
 </html>
