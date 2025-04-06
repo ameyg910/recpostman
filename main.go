@@ -10,6 +10,7 @@ import (
 	"rec_postman/db"
 	"rec_postman/models"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -114,6 +115,12 @@ func handleGoogleLogin(c *gin.Context) {
 func handleGoogleCallback(c *gin.Context) {
 	log.Println("Entering handleGoogleCallback")
 	code := c.Query("code")
+	if code == "" {
+		log.Println("No code provided in callback")
+		c.String(http.StatusBadRequest, "No code provided")
+		return
+	}
+
 	token, err := googleOauthConfig.Exchange(c, code)
 	if err != nil {
 		log.Println("Failed to exchange token:", err)
@@ -130,6 +137,10 @@ func handleGoogleCallback(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	log.Println("Response Status:", resp.Status)
+	log.Println("Content-Type:", resp.Header.Get("Content-Type"))
+
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Failed to read response:", err)
@@ -137,6 +148,13 @@ func handleGoogleCallback(c *gin.Context) {
 		return
 	}
 	log.Println("Raw response from Google:", string(data))
+
+	// Check if response is JSON (allow charset variations)
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		log.Println("Unexpected content type:", resp.Header.Get("Content-Type"))
+		c.String(http.StatusInternalServerError, "Unexpected response format from Google")
+		return
+	}
 
 	var userInfo struct {
 		ID    string `json:"id"`
@@ -287,7 +305,11 @@ func handleRoleSubmission(c *gin.Context) {
 		user.Role = models.Applicant
 		skills := c.PostFormArray("skills")
 		if len(skills) == 0 {
-			c.String(http.StatusBadRequest, "At least one skill is required for applicants")
+			c.HTML(http.StatusBadRequest, "select_role.html", gin.H{
+				"UserID":  userID,
+				"Email":   user.Email,
+				"Message": "At least one skill is required for applicants",
+			})
 			return
 		}
 		user.Skills = skills
@@ -562,14 +584,15 @@ func handleUploadResume(c *gin.Context) {
 			return
 		}
 	}
-	filename := filepath.Join(uploadDir, userID.(string)+"_"+file.Filename)
-	log.Println("Attempting to save file to:", filename)
-	if err := c.SaveUploadedFile(file, filename); err != nil {
+	filename := userID.(string) + "_" + file.Filename
+	filePath := filepath.Join(uploadDir, filename)
+	log.Println("Attempting to save file to:", filePath)
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		log.Println("Failed to save file:", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
 		return
 	}
-	log.Println("File saved successfully to:", filename)
+	log.Println("File saved successfully to:", filePath)
 
 	log.Println("Fetching user from DB")
 	user, err := db.GetUser(userID.(string))
@@ -578,8 +601,8 @@ func handleUploadResume(c *gin.Context) {
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch user: " + err.Error()})
 		return
 	}
-	user.Resume = filename
-	log.Println("Updating user with resume:", filename)
+	user.Resume = "/uploads/" + filename // Store relative URL path
+	log.Println("Updating user with resume:", user.Resume)
 	if err := db.SaveUser(user); err != nil {
 		log.Println("Failed to update user:", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to update user with resume: " + err.Error()})

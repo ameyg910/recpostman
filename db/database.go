@@ -135,20 +135,30 @@ func InitDB() {
 func GetUser(id string) (*models.User, error) {
 	user := &models.User{}
 	var skillsJSON []byte
+	var resume sql.NullString
+
 	err := DB.QueryRow("SELECT id, email, name, role, company_id, skills, resume, approved FROM users WHERE id = $1", id).
-		Scan(&user.ID, &user.Email, &user.Name, &user.Role, &user.CompanyID, &skillsJSON, &user.Resume, &user.Approved)
+		Scan(&user.ID, &user.Email, &user.Name, &user.Role, &user.CompanyID, &skillsJSON, &resume, &user.Approved)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+
 	if skillsJSON != nil {
 		err = json.Unmarshal(skillsJSON, &user.Skills)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	if resume.Valid {
+		user.Resume = resume.String
+	} else {
+		user.Resume = ""
+	}
+
 	return user, nil
 }
 
@@ -284,9 +294,15 @@ func GetApplicationsByApplicant(applicantID string) ([]models.Application, error
 	var applications []models.Application
 	for rows.Next() {
 		var app models.Application
-		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &app.Resume, &app.Status, &app.AppliedAt)
+		var resume sql.NullString
+		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &resume, &app.Status, &app.AppliedAt)
 		if err != nil {
 			return nil, err
+		}
+		if resume.Valid {
+			app.Resume = resume.String
+		} else {
+			app.Resume = ""
 		}
 		applications = append(applications, app)
 	}
@@ -308,10 +324,16 @@ func GetApplicationsByRecruiter(recruiterID string) ([]models.Application, error
 	var applications []models.Application
 	for rows.Next() {
 		var app models.Application
+		var resume sql.NullString
 		var jobTitle string
-		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &app.Resume, &app.Status, &app.AppliedAt, &jobTitle)
+		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &resume, &app.Status, &app.AppliedAt, &jobTitle)
 		if err != nil {
 			return nil, err
+		}
+		if resume.Valid {
+			app.Resume = resume.String
+		} else {
+			app.Resume = ""
 		}
 		app.JobTitle = jobTitle
 		applications = append(applications, app)
@@ -353,7 +375,7 @@ func GetRecommendedJobs(skills []string) ([]models.Job, error) {
 }
 
 func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
-	rows, err := DB.Query("SELECT id, email, name, skills FROM users WHERE role = 'applicant'")
+	rows, err := DB.Query("SELECT id, email, name, skills, resume FROM users WHERE role = 'applicant'")
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +385,8 @@ func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
 	for rows.Next() {
 		var user models.User
 		var skillsJSON []byte
-		err := rows.Scan(&user.ID, &user.Email, &user.Name, &skillsJSON)
+		var resume sql.NullString
+		err := rows.Scan(&user.ID, &user.Email, &user.Name, &skillsJSON, &resume)
 		if err != nil {
 			return nil, err
 		}
@@ -372,6 +395,11 @@ func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+		if resume.Valid {
+			user.Resume = resume.String
+		} else {
+			user.Resume = ""
 		}
 		for _, skill := range skills {
 			for _, userSkill := range user.Skills {

@@ -2,6 +2,7 @@ package models
 
 import "time"
 
+// Role defines the possible roles a user can have
 type Role string
 
 const (
@@ -10,59 +11,65 @@ const (
 	Applicant  Role = "applicant"
 )
 
+// User represents a user in the system
 type User struct {
-	ID        string
-	Email     string
-	Name      string
-	Role      Role
-	Skills    []string
-	CompanyID string
-	Approved  bool
-	Resume    string
+	ID        string   `json:"id"`
+	Email     string   `json:"email"`
+	Name      string   `json:"name"`
+	Role      Role     `json:"role"`
+	CompanyID string   `json:"company_id,omitempty"` // Optional for applicants
+	Skills    []string `json:"skills,omitempty"`     // Stored as JSONB in DB
+	Resume    string   `json:"resume,omitempty"`     // Path to uploaded resume
+	Approved  bool     `json:"approved"`
 }
 
+// Company represents a company in the system
 type Company struct {
-	ID          int
-	Title       string
-	Description string
-	Logo        string
-	Approved    bool
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Logo        string `json:"logo,omitempty"`
+	Approved    bool   `json:"approved"`
 }
 
+// Job represents a job posting
 type Job struct {
-	ID          int
-	Title       string
-	Description string
-	Skills      []string
-	CompanyID   int
-	PostedBy    string
-	CreatedAt   time.Time // Changed back from PostedAt to match original
+	ID          int       `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Skills      []string  `json:"skills"` // Stored as JSONB in DB
+	CompanyID   int       `json:"company_id"`
+	PostedBy    string    `json:"posted_by"` // User ID of the recruiter
+	CreatedAt   time.Time `json:"created_at"`
 }
 
+// Application represents a job application
 type Application struct {
-	ID          int
-	JobID       int
-	ApplicantID string
-	Resume      string // Added
-	Status      string
-	AppliedAt   time.Time
-	JobTitle    string // Added for display purposes
+	ID          int       `json:"id"`
+	JobID       int       `json:"job_id"`
+	ApplicantID string    `json:"applicant_id"`
+	Resume      string    `json:"resume,omitempty"`
+	Status      string    `json:"status"` // e.g., "pending", "accepted", "rejected"
+	AppliedAt   time.Time `json:"applied_at"`
+	JobTitle    string    `json:"job_title,omitempty"` // For display purposes, not stored in DB
 }
 
+// Interview represents an interview request
 type Interview struct {
-	ID          int
-	JobID       int
-	ApplicantID string
-	RecruiterID string
-	Status      string
-	ScheduledAt time.Time
+	ID          int       `json:"id"`
+	JobID       int       `json:"job_id"`
+	ApplicantID string    `json:"applicant_id"`
+	RecruiterID string    `json:"recruiter_id"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Status      string    `json:"status"` // e.g., "requested", "accepted", "declined"
 }
 
+// UserWithCompany is a composite struct for unapproved recruiters with their company details
 type UserWithCompany struct {
-	ID        string
-	Email     string
-	Name      string
-	Role      Role
-	CompanyID string
-	Company   Company
+	ID        string  `json:"id"`
+	Email     string  `json:"email"`
+	Name      string  `json:"name"`
+	Role      Role    `json:"role"`
+	CompanyID string  `json:"company_id"`
+	Company   Company `json:"company"`
 }

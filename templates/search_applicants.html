@@ -21,41 +21,59 @@
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-12">
-                <a href="/logout" class="btn btn-danger btn-custom">Logout</a>
                 <a href="/dashboard" class="btn btn-primary btn-custom">Back to Dashboard</a>
+                <a href="/logout" class="btn btn-danger btn-custom">Logout</a>
             </div>
         </div>
         <div class="row mt-4">
             <div class="col-md-6">
+                <h3>Search by Skills</h3>
                 <form action="/recruiter/search-applicants" method="POST">
                     <div class="mb-3">
                         <label for="skills" class="form-label">Skills (comma-separated)</label>
-                        <input type="text" class="form-control" id="skills" name="skills" placeholder="e.g., Go, Python, SQL" required>
+                        <input type="text" class="form-control" id="skills" name="skills" required>
                     </div>
                     <button type="submit" class="btn btn-primary btn-custom">Search</button>
                 </form>
             </div>
         </div>
-        {{if .Applicants}}
+        {{if .Message}}
+            <div class="alert alert-danger mt-3">{{.Message}}</div>
+        {{end}}
+        {{if .ApplicantsLoaded}}
             <h3 class="mt-4">Matching Applicants</h3>
-            <table class="table table-striped mt-2">
-                <thead>
-                    <tr>
-                        <th>Email</th>
-                        <th>Skills</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .Applicants}}
+            {{if .Applicants}}
+                <table class="table table-striped">
+                    <thead>
                         <tr>
-                            <td>{{.Email}}</td>
-                            <td>{{range .Skills}}{{.}}, {{end}}</td>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Skills</th>
+                            <th>Resume</th>
                         </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        {{else if .ApplicantsLoaded}}
-            <p class="text-center mt-4">No applicants found with the specified skills.</p>
+                    </thead>
+                    <tbody>
+                        {{range .Applicants}}
+                            <tr>
+                                <td>{{.ID}}</td>
+                                <td>{{.Name}}</td>
+                                <td>{{.Email}}</td>
+                                <td>{{range .Skills}}{{.}}, {{end}}</td>
+                                <td>
+                                    {{if .Resume}}
+                                        <a href="{{.Resume}}" target="_blank">View Resume</a>
+                                    {{else}}
+                                        Not Uploaded
+                                    {{end}}
+                                </td>
+                            </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            {{else}}
+                <p class="mt-3">No applicants found with the specified skills.</p>
+            {{end}}
         {{end}}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

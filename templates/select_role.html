@@ -7,62 +7,70 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f8f9fa; font-family: Arial, sans-serif; }
-        .header { background-color: #007bff; color: white; padding: 20px 0; text-align: center; }
-        .btn-custom { margin: 5px; }
+        .container { max-width: 600px; margin-top: 50px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="container">
-            <h1>Select Your Role</h1>
-            <p>Email: {{.Email}}</p>
-        </div>
-    </div>
-    <div class="container mt-4">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <a href="/logout" class="btn btn-danger btn-custom">Logout</a>
-                <form id="roleForm" action="/select-role" method="POST" onsubmit="return confirm('Are you sure? This cannot be changed later.');">
-                    <input type="hidden" name="id" value="{{.UserID}}">
-                    <div class="mb-3">
-                        <label for="role" class="form-label">Choose Role</label>
-                        <select class="form-select" id="role" name="role" required onchange="toggleFields(this.value)">
-                            <option value="">Select a role</option>
-                            <option value="recruiter">Recruiter</option>
-                            <option value="applicant">Applicant</option>
-                        </select>
-                    </div>
-                    <div id="recruiterFields" style="display: none;">
-                        <div class="mb-3">
-                            <label for="company_title" class="form-label">Company Title</label>
-                            <input type="text" class="form-control" id="company_title" name="company_title">
-                        </div>
-                        <div class="mb-3">
-                            <label for="company_description" class="form-label">Company Description</label>
-                            <textarea class="form-control" id="company_description" name="company_description"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label for="company_logo" class="form-label">Company Logo URL</label>
-                            <input type="text" class="form-control" id="company_logo" name="company_logo">
-                        </div>
-                    </div>
-                    <div id="applicantFields" style="display: none;">
-                        <div class="mb-3">
-                            <label for="skills" class="form-label">Skills (comma-separated)</label>
-                            <input type="text" class="form-control" id="skills" name="skills">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-custom">Submit</button>
-                </form>
+    <div class="container">
+        <h2>Select Your Role</h2>
+        <p>Email: {{.Email}}</p>
+        {{if .Message}}
+            <div class="alert alert-danger">{{.Message}}</div>
+        {{end}}
+        <form action="/select-role" method="POST">
+            <div class="mb-3">
+                <label for="role" class="form-label">Role</label>
+                <select class="form-control" id="role" name="role" required>
+                    <option value="">Select a role</option>
+                    <option value="recruiter">Recruiter</option>
+                    <option value="applicant">Applicant</option>
+                </select>
             </div>
-        </div>
+
+            <!-- Recruiter Fields -->
+            <div id="recruiter-fields" style="display: none;">
+                <div class="mb-3">
+                    <label for="company_title" class="form-label">Company Title</label>
+                    <input type="text" class="form-control" id="company_title" name="company_title">
+                </div>
+                <div class="mb-3">
+                    <label for="company_description" class="form-label">Company Description</label>
+                    <textarea class="form-control" id="company_description" name="company_description"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="company_logo" class="form-label">Company Logo URL</label>
+                    <input type="text" class="form-control" id="company_logo" name="company_logo">
+                </div>
+            </div>
+
+            <!-- Applicant Fields -->
+            <div id="applicant-fields" style="display: none;">
+                <div class="mb-3">
+                    <label for="skills" class="form-label">Skills (comma-separated)</label>
+                    <input type="text" class="form-control" id="skills" name="skills" placeholder="e.g., Go, Python, JavaScript">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Submit</button>
+        </form>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function toggleFields(role) {
-            document.getElementById('recruiterFields').style.display = role === 'recruiter' ? 'block' : 'none';
-            document.getElementById('applicantFields').style.display = role === 'applicant' ? 'block' : 'none';
-        }
+        document.getElementById('role').addEventListener('change', function() {
+            const recruiterFields = document.getElementById('recruiter-fields');
+            const applicantFields = document.getElementById('applicant-fields');
+            if (this.value === 'recruiter') {
+                recruiterFields.style.display = 'block';
+                applicantFields.style.display = 'none';
+            } else if (this.value === 'applicant') {
+                recruiterFields.style.display = 'none';
+                applicantFields.style.display = 'block';
+            } else {
+                recruiterFields.style.display = 'none';
+                applicantFields.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
