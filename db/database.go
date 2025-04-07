@@ -104,8 +104,7 @@ func InitDB() {
 		applicant_id TEXT REFERENCES users(id),
 		recruiter_id TEXT REFERENCES users(id),
 		scheduled_at TIMESTAMP,
-		status TEXT DEFAULT 'requested',
-		meet_link TEXT
+		status TEXT DEFAULT 'requested'
 	);`
 	_, err = DB.Exec(interviewQuery)
 	if err != nil {
@@ -121,48 +120,6 @@ func InitDB() {
 	_, err = DB.Exec(followQuery)
 	if err != nil {
 		log.Fatal("Error creating company_followers table: ", err)
-	}
-
-	// Migration to add resume column if it doesn't exist
-	alterQuery := `
-	DO $$
-	BEGIN
-		IF NOT EXISTS (
-			SELECT 1 
-			FROM information_schema.columns 
-			WHERE table_name = 'applications' 
-			AND column_name = 'resume'
-		) THEN
-			ALTER TABLE applications ADD COLUMN resume TEXT;
-		END IF;
-	END;
-	$$;`
-	_, err = DB.Exec(alterQuery)
-	if err != nil {
-		log.Println("Error adding resume column to applications (might already exist):", err)
-	} else {
-		log.Println("Added resume column to applications table")
-	}
-
-	// Migration to add meet_link column if it doesn't exist
-	alterMeetLinkQuery := `
-	DO $$
-	BEGIN
-		IF NOT EXISTS (
-			SELECT 1 
-			FROM information_schema.columns 
-			WHERE table_name = 'interviews' 
-			AND column_name = 'meet_link'
-		) THEN
-			ALTER TABLE interviews ADD COLUMN meet_link TEXT;
-		END IF;
-	END;
-	$$;`
-	_, err = DB.Exec(alterMeetLinkQuery)
-	if err != nil {
-		log.Println("Error adding meet_link column to interviews (might already exist):", err)
-	} else {
-		log.Println("Added meet_link column to interviews table")
 	}
 }
 
@@ -450,10 +407,10 @@ func SearchApplicantsBySkills(skills []string) ([]models.User, error) {
 func SaveInterview(interview *models.Interview) (int, error) {
 	var id int
 	err := DB.QueryRow(`
-		INSERT INTO interviews (job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO interviews (job_id, applicant_id, recruiter_id, scheduled_at, status)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id`,
-		interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.ScheduledAt, interview.Status, interview.MeetLink).Scan(&id)
+		interview.JobID, interview.ApplicantID, interview.RecruiterID, interview.ScheduledAt, interview.Status).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -461,7 +418,7 @@ func SaveInterview(interview *models.Interview) (int, error) {
 }
 
 func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
-	rows, err := DB.Query("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link FROM interviews WHERE applicant_id = $1", applicantID)
+	rows, err := DB.Query("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status FROM interviews WHERE applicant_id = $1", applicantID)
 	if err != nil {
 		return nil, err
 	}
@@ -470,15 +427,9 @@ func GetInterviewsByApplicant(applicantID string) ([]models.Interview, error) {
 	var interviews []models.Interview
 	for rows.Next() {
 		var interview models.Interview
-		var meetLink sql.NullString
-		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status, &meetLink)
+		err := rows.Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status)
 		if err != nil {
 			return nil, err
-		}
-		if meetLink.Valid {
-			interview.MeetLink = meetLink.String
-		} else {
-			interview.MeetLink = ""
 		}
 		interviews = append(interviews, interview)
 	}
@@ -496,19 +447,13 @@ func UpdateInterviewStatus(id int, status string, alternativeTime time.Time) err
 
 func GetInterview(id int) (*models.Interview, error) {
 	interview := &models.Interview{}
-	var meetLink sql.NullString
-	err := DB.QueryRow("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status, meet_link FROM interviews WHERE id = $1", id).
-		Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status, &meetLink)
+	err := DB.QueryRow("SELECT id, job_id, applicant_id, recruiter_id, scheduled_at, status FROM interviews WHERE id = $1", id).
+		Scan(&interview.ID, &interview.JobID, &interview.ApplicantID, &interview.RecruiterID, &interview.ScheduledAt, &interview.Status)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
-	}
-	if meetLink.Valid {
-		interview.MeetLink = meetLink.String
-	} else {
-		interview.MeetLink = ""
 	}
 	return interview, nil
 }
