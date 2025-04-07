@@ -12,12 +12,14 @@ import (
 	"rec_postman/db"
 	"rec_postman/models"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/ledongthuc/pdf"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -596,6 +598,31 @@ func handleUploadResume(c *gin.Context) {
 	}
 	log.Println("File received:", file.Filename)
 
+	// Validate file extension
+	if !strings.HasSuffix(strings.ToLower(file.Filename), ".pdf") {
+		log.Println("Invalid file type, must be PDF")
+		renderApplicantDashboard(c, userID.(string), "Please upload a PDF file.")
+		return
+	}
+
+	// Save the file temporarily to parse it
+	tempFilePath := filepath.Join("./uploads", "temp_"+file.Filename)
+	if err := c.SaveUploadedFile(file, tempFilePath); err != nil {
+		log.Println("Failed to save temp file:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
+		return
+	}
+	defer os.Remove(tempFilePath) // Clean up temp file after parsing
+
+	// Parse and validate the PDF
+	valid, errMsg := validatePDF(tempFilePath)
+	if !valid {
+		log.Println("PDF validation failed:", errMsg)
+		renderApplicantDashboard(c, userID.(string), errMsg)
+		return
+	}
+
+	// Proceed with permanent storage if valid
 	uploadDir := "./uploads"
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
 		log.Println("Creating upload directory")
@@ -633,6 +660,98 @@ func handleUploadResume(c *gin.Context) {
 
 	log.Println("Redirecting to /dashboard")
 	c.Redirect(http.StatusFound, "/dashboard")
+}
+
+// Helper function to validate PDF content using github.com/ledongthuc/pdf
+func validatePDF(filePath string) (bool, string) {
+	f, r, err := pdf.Open(filePath)
+	if err != nil {
+		return false, "Failed to open PDF: " + err.Error()
+	}
+	defer f.Close()
+
+	totalPage := r.NumPage()
+	var text string
+	for i := 1; i <= totalPage; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		pageText, err := p.GetPlainText(nil)
+		if err != nil {
+			return false, "Failed to extract text from page " + strconv.Itoa(i) + ": " + err.Error()
+		}
+		text += pageText
+	}
+
+	// Convert text to lowercase for case-insensitive matching
+	text = strings.ToLower(text)
+
+	// Check for required fields
+	hasName := strings.Contains(text, "name")
+	hasSkills := strings.Contains(text, "skills") || strings.Contains(text, "skill")
+	hasEducation := strings.Contains(text, "education") || strings.Contains(text, "degree") || strings.Contains(text, "university") || strings.Contains(text, "college")
+
+	if !hasName || !hasSkills || !hasEducation {
+		missing := []string{}
+		if !hasName {
+			missing = append(missing, "name")
+		}
+		if !hasSkills {
+			missing = append(missing, "skills")
+		}
+		if !hasEducation {
+			missing = append(missing, "education")
+		}
+		return false, "Incomplete resume: missing " + strings.Join(missing, ", ") + "."
+	}
+
+	return true, ""
+}
+
+// Helper function to render applicant dashboard with error message
+func renderApplicantDashboard(c *gin.Context, userID string, message string) {
+	user, err := db.GetUser(userID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch user: " + err.Error()})
+		return
+	}
+	jobs, err := db.GetAllJobs()
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch jobs: " + err.Error()})
+		return
+	}
+	applications, err := db.GetApplicationsByApplicant(userID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch applications: " + err.Error()})
+		return
+	}
+	recommendedJobs, err := db.GetRecommendedJobs(user.Skills)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch recommended jobs: " + err.Error()})
+		return
+	}
+	interviews, err := db.GetInterviewsByApplicant(userID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch interviews: " + err.Error()})
+		return
+	}
+	followedCompanies, err := db.GetFollowedCompanies(userID)
+	if err != nil {
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch followed companies: " + err.Error()})
+		return
+	}
+	c.HTML(http.StatusBadRequest, "applicant_dashboard.html", gin.H{
+		"Name":              user.Name,
+		"Skills":            user.Skills,
+		"Jobs":              jobs,
+		"Applications":      applications,
+		"RecommendedJobs":   recommendedJobs,
+		"Interviews":        interviews,
+		"Resume":            user.Resume,
+		"FollowedCompanies": followedCompanies,
+		"Message":           message,
+	})
 }
 
 func handleRequestInterview(c *gin.Context) {
