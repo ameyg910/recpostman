@@ -21,6 +21,7 @@ import (
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/calendar/v3" // Corrected import path
 )
 
 var (
@@ -39,8 +40,13 @@ func init() {
 		RedirectURL:  "http://localhost:8080/auth/google/callback",
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile", "openid"},
-		Endpoint:     google.Endpoint,
+		Scopes: []string{
+			"https://www.googleapis.com/auth/userinfo.email",
+			"https://www.googleapis.com/auth/userinfo.profile",
+			"openid",
+			"https://www.googleapis.com/auth/calendar",
+		},
+		Endpoint: google.Endpoint,
 	}
 
 	if googleOauthConfig.ClientID == "" || googleOauthConfig.ClientSecret == "" {
@@ -87,6 +93,7 @@ func main() {
 	r.GET("/select-role", handleSelectRole)
 	r.POST("/select-role", handleRoleSubmission)
 	r.GET("/logout", handleLogout)
+	r.POST("/applicant/follow-company", requireRole(models.Applicant), handleFollowCompany)
 
 	r.GET("/dashboard", requireRole(models.SuperAdmin, models.Recruiter, models.Applicant), handleDashboard)
 	r.POST("/recruiter/post-job", requireRole(models.Recruiter), handlePostJob)
@@ -192,6 +199,7 @@ func handleGoogleCallback(c *gin.Context) {
 	if existingUser != nil && existingUser.Role != "" {
 		log.Println("Existing user with role found:", existingUser.Role)
 		session.Set("user_id", user.ID)
+		session.Set("token", token) // Store token for Calendar API
 		session.Save()
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
@@ -206,6 +214,7 @@ func handleGoogleCallback(c *gin.Context) {
 			return
 		}
 		session.Set("user_id", user.ID)
+		session.Set("token", token)
 		session.Save()
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
@@ -218,6 +227,7 @@ func handleGoogleCallback(c *gin.Context) {
 	}
 
 	session.Set("user_id", user.ID)
+	session.Set("token", token)
 	session.Save()
 	log.Println("Redirecting to /select-role for new user")
 	c.Redirect(http.StatusFound, "/select-role?id="+user.ID)
@@ -405,14 +415,20 @@ func handleDashboard(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to fetch interviews: "+err.Error())
 			return
 		}
+		followedCompanies, err := db.GetFollowedCompanies(user.ID)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to fetch followed companies: "+err.Error())
+			return
+		}
 		c.HTML(http.StatusOK, "applicant_dashboard.html", gin.H{
-			"Name":            user.Name,
-			"Skills":          user.Skills,
-			"Jobs":            jobs,
-			"Applications":    applications,
-			"RecommendedJobs": recommendedJobs,
-			"Interviews":      interviews,
-			"Resume":          user.Resume,
+			"Name":              user.Name,
+			"Skills":            user.Skills,
+			"Jobs":              jobs,
+			"Applications":      applications,
+			"RecommendedJobs":   recommendedJobs,
+			"Interviews":        interviews,
+			"Resume":            user.Resume,
+			"FollowedCompanies": followedCompanies,
 		})
 	case models.SuperAdmin:
 		c.HTML(http.StatusOK, "dashboard.html", gin.H{
@@ -453,10 +469,20 @@ func handlePostJob(c *gin.Context) {
 		PostedBy:    user.ID,
 	}
 
-	_, err = db.SaveJob(&job)
+	_, err = db.SaveJob(&job) // Changed to ignore returned jobID since it's not used
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to post job: "+err.Error())
 		return
+	}
+
+	// Notify followers asynchronously
+	followers, err := db.GetCompanyFollowers(companyID)
+	if err != nil {
+		log.Println("Failed to fetch followers for notification:", err)
+	} else {
+		for _, follower := range followers {
+			go sendJobNotification(follower.Email, title, companyID)
+		}
 	}
 
 	c.Redirect(http.StatusFound, "/dashboard")
@@ -554,7 +580,7 @@ func handleApplyJob(c *gin.Context) {
 		Status:      "pending",
 	}
 
-	_, err = db.SaveApplication(&application)
+	_, err = db.SaveApplication(&application) // Changed to ignore returned ID since it's not used
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Failed to apply for job: "+err.Error())
 		return
@@ -629,6 +655,13 @@ func handleRequestInterview(c *gin.Context) {
 		return
 	}
 
+	token, ok := session.Get("token").(*oauth2.Token)
+	if !ok || token == nil {
+		log.Println("No valid OAuth token in session")
+		c.String(http.StatusUnauthorized, "Please re-authenticate")
+		return
+	}
+
 	applicantID := c.PostForm("applicant_id")
 	jobIDStr := c.PostForm("job_id")
 	scheduledAtStr := c.PostForm("scheduled_at")
@@ -645,8 +678,47 @@ func handleRequestInterview(c *gin.Context) {
 		return
 	}
 
-	// Mock Google Meet link (replace with actual API integration if needed)
-	meetLink := "https://meet.google.com/abc-xyz-" + strconv.Itoa(int(time.Now().UnixNano()))
+	// Fetch job and applicant for event details
+	job, err := db.GetJob(jobID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch job: "+err.Error())
+		return
+	}
+	applicant, err := db.GetUser(applicantID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch applicant: "+err.Error())
+		return
+	}
+
+	// Create Google Calendar event with Meet link
+	client := googleOauthConfig.Client(c, token)
+	srv, err := calendar.New(client)
+	if err != nil {
+		log.Println("Failed to create calendar client:", err)
+		c.String(http.StatusInternalServerError, "Failed to create calendar client: "+err.Error())
+		return
+	}
+
+	event := &calendar.Event{
+		Summary:     "Interview for " + job.Title,
+		Description: "Interview scheduled via Recruitment Platform",
+		Start:       &calendar.EventDateTime{DateTime: scheduledAt.Format(time.RFC3339), TimeZone: "UTC"},
+		End:         &calendar.EventDateTime{DateTime: scheduledAt.Add(time.Hour).Format(time.RFC3339), TimeZone: "UTC"},
+		Attendees:   []*calendar.EventAttendee{{Email: applicant.Email}},
+		ConferenceData: &calendar.ConferenceData{
+			CreateRequest: &calendar.CreateConferenceRequest{
+				RequestId:             "interview-" + strconv.Itoa(int(time.Now().UnixNano())),
+				ConferenceSolutionKey: &calendar.ConferenceSolutionKey{Type: "hangoutsMeet"},
+			},
+		},
+	}
+	event, err = srv.Events.Insert("primary", event).ConferenceDataVersion(1).Do()
+	if err != nil {
+		log.Println("Failed to create calendar event:", err)
+		c.String(http.StatusInternalServerError, "Failed to create calendar event: "+err.Error())
+		return
+	}
+	meetLink := event.HangoutLink
 
 	interview := models.Interview{
 		JobID:       jobID,
@@ -664,17 +736,7 @@ func handleRequestInterview(c *gin.Context) {
 	}
 
 	// Send notification asynchronously
-	applicant, err := db.GetUser(applicantID)
-	if err != nil {
-		log.Println("Failed to fetch applicant for notification:", err)
-	} else {
-		job, err := db.GetJob(jobID)
-		if err != nil {
-			log.Println("Failed to fetch job for notification:", err)
-		} else {
-			go sendInterviewNotification(applicant.Email, job.Title, scheduledAt, meetLink, interviewID)
-		}
-	}
+	go sendInterviewNotification(applicant.Email, job.Title, scheduledAt, meetLink, interviewID)
 
 	c.Redirect(http.StatusFound, "/dashboard")
 }
@@ -735,6 +797,29 @@ func handleUpdateInterview(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/dashboard")
 }
 
+func handleFollowCompany(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
+
+	companyIDStr := c.PostForm("company_id")
+	companyID, err := strconv.Atoi(companyIDStr)
+	if err != nil {
+		c.String(http.StatusBadRequest, "Invalid company ID")
+		return
+	}
+
+	if err := db.FollowCompany(userID.(string), companyID); err != nil {
+		c.String(http.StatusInternalServerError, "Failed to follow company: "+err.Error())
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/dashboard")
+}
+
 func sendInterviewNotification(toEmail, jobTitle string, scheduledAt time.Time, meetLink string, interviewID int) {
 	msg := []byte(fmt.Sprintf(
 		"Subject: Interview Scheduled for %s\r\n"+
@@ -776,6 +861,26 @@ func sendAlternativeTimeNotification(toEmail, jobTitle, applicantID string, alte
 		log.Println("Failed to send alternative time notification:", err)
 	} else {
 		log.Println("Alternative time notification sent to:", toEmail)
+	}
+}
+
+func sendJobNotification(toEmail, jobTitle string, companyID int) {
+	msg := []byte(fmt.Sprintf(
+		"Subject: New Job Posting: %s\r\n"+
+			"\r\n"+
+			"Dear Applicant,\r\n"+
+			"A new job '%s' has been posted by a company you follow (ID: %d).\r\n"+
+			"View it at: http://localhost:8080/dashboard\r\n"+
+			"\r\n"+
+			"Best regards,\r\n"+
+			"Recruitment Team\r\n",
+		jobTitle, jobTitle, companyID))
+
+	err := smtp.SendMail(smtpAddr, smtpAuth, os.Getenv("SMTP_EMAIL"), []string{toEmail}, msg)
+	if err != nil {
+		log.Println("Failed to send job notification:", err)
+	} else {
+		log.Println("Job notification sent to:", toEmail)
 	}
 }
 

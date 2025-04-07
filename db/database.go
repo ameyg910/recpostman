@@ -112,6 +112,17 @@ func InitDB() {
 		log.Fatal("Error creating interviews table: ", err)
 	}
 
+	followQuery := `
+	CREATE TABLE IF NOT EXISTS company_followers (
+		user_id TEXT REFERENCES users(id),
+		company_id INTEGER REFERENCES companies(id),
+		PRIMARY KEY (user_id, company_id)
+	);`
+	_, err = DB.Exec(followQuery)
+	if err != nil {
+		log.Fatal("Error creating company_followers table: ", err)
+	}
+
 	// Migration to add resume column if it doesn't exist
 	alterQuery := `
 	DO $$
@@ -520,6 +531,74 @@ func GetJob(id int) (*models.Job, error) {
 		}
 	}
 	return job, nil
+}
+
+func FollowCompany(userID string, companyID int) error {
+	_, err := DB.Exec(`
+		INSERT INTO company_followers (user_id, company_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id, company_id) DO NOTHING`,
+		userID, companyID)
+	return err
+}
+
+func GetFollowedCompanies(userID string) ([]models.Company, error) {
+	rows, err := DB.Query(`
+		SELECT c.id, c.title, c.description, c.logo, c.approved
+		FROM companies c
+		JOIN company_followers cf ON c.id = cf.company_id
+		WHERE cf.user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var companies []models.Company
+	for rows.Next() {
+		var company models.Company
+		err := rows.Scan(&company.ID, &company.Title, &company.Description, &company.Logo, &company.Approved)
+		if err != nil {
+			return nil, err
+		}
+		companies = append(companies, company)
+	}
+	return companies, nil
+}
+
+func GetCompanyFollowers(companyID int) ([]models.User, error) {
+	rows, err := DB.Query(`
+		SELECT u.id, u.email, u.name, u.role, u.company_id, u.skills, u.resume, u.approved
+		FROM users u
+		JOIN company_followers cf ON u.id = cf.user_id
+		WHERE cf.company_id = $1`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		var skillsJSON []byte
+		var resume sql.NullString
+		err := rows.Scan(&user.ID, &user.Email, &user.Name, &user.Role, &user.CompanyID, &skillsJSON, &resume, &user.Approved)
+		if err != nil {
+			return nil, err
+		}
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &user.Skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if resume.Valid {
+			user.Resume = resume.String
+		} else {
+			user.Resume = ""
+		}
+		users = append(users, user)
+	}
+	return users, nil
 }
 
 func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {

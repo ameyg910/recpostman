@@ -56,6 +56,30 @@
             </div>
         </div>
 
+        <!-- Follow Companies -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h3>Follow Companies</h3>
+                <form action="/applicant/follow-company" method="POST">
+                    <div class="mb-3">
+                        <label for="company_id" class="form-label">Company ID</label>
+                        <input type="number" class="form-control" name="company_id" id="company_id" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Follow</button>
+                </form>
+                <h4>Your Followed Companies</h4>
+                {{if .FollowedCompanies}}
+                    <ul>
+                        {{range .FollowedCompanies}}
+                            <li>{{.Title}} (ID: {{.ID}})</li>
+                        {{end}}
+                    </ul>
+                {{else}}
+                    <p>You are not following any companies yet.</p>
+                {{end}}
+            </div>
+        </div>
+
         <!-- Job Listings -->
         <div class="row mt-4">
             <div class="col-md-12">
