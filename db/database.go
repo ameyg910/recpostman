@@ -299,14 +299,25 @@ func GetApplicationsByApplicant(applicantID string) ([]models.Application, error
 	}
 	return applications, nil
 }
+func UpdateApplicationStatus(applicationID, status string) error {
+	_, err := DB.Exec("UPDATE applications SET status = $1 WHERE id = $2", status, applicationID)
+	return err
+}
+func GetUserEmail(userID string) (string, error) {
+	var email string
+	err := DB.QueryRow("SELECT email FROM users WHERE id = $1", userID).Scan(&email)
+	if err != nil {
+		return "", err
+	}
+	return email, nil
+}
 
 func GetApplicationsByRecruiter(recruiterID string) ([]models.Application, error) {
-	query := `
-	SELECT a.id, a.job_id, a.applicant_id, a.resume, a.status, a.applied_at, j.title
-	FROM applications a
-	JOIN jobs j ON a.job_id = j.id
-	WHERE j.posted_by = $1;`
-	rows, err := DB.Query(query, recruiterID)
+	rows, err := DB.Query(`
+        SELECT a.id, a.job_id, a.applicant_id, a.resume, a.status, j.title 
+        FROM applications a 
+        JOIN jobs j ON a.job_id = j.id 
+        WHERE j.posted_by = $1`, recruiterID)
 	if err != nil {
 		return nil, err
 	}
@@ -315,16 +326,16 @@ func GetApplicationsByRecruiter(recruiterID string) ([]models.Application, error
 	var applications []models.Application
 	for rows.Next() {
 		var app models.Application
-		var resume sql.NullString
+		var resume sql.NullString // Handle nullable resume column
 		var jobTitle string
-		err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &resume, &app.Status, &app.AppliedAt, &jobTitle)
-		if err != nil {
+		if err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &resume, &app.Status, &jobTitle); err != nil {
 			return nil, err
 		}
+		// Safely convert sql.NullString to string
 		if resume.Valid {
 			app.Resume = resume.String
 		} else {
-			app.Resume = ""
+			app.Resume = "" // Default to empty string if NULL
 		}
 		app.JobTitle = jobTitle
 		applications = append(applications, app)

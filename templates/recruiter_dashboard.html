@@ -91,6 +91,16 @@
                             <td><a href="{{.Resume}}" target="_blank">View Resume</a></td>
                             <td>{{.Status}}</td>
                             <td>
+                                <form action="/recruiter/update-application-status" method="POST" class="d-inline">
+                                    <input type="hidden" name="application_id" value="{{.ID}}">
+                                    <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                                        <option value="Pending" {{if eq .Status "Pending"}}selected{{end}}>Pending</option>
+                                        <option value="Reviewed" {{if eq .Status "Reviewed"}}selected{{end}}>Reviewed</option>
+                                        <option value="Interview Scheduled" {{if eq .Status "Interview Scheduled"}}selected{{end}}>Interview Scheduled</option>
+                                        <option value="Offered" {{if eq .Status "Offered"}}selected{{end}}>Offered</option>
+                                        <option value="Rejected" {{if eq .Status "Rejected"}}selected{{end}}>Rejected</option>
+                                    </select>
+                                </form>
                                 <form action="/recruiter/parse-resume" method="POST" class="d-inline">
                                     <input type="hidden" name="applicant_id" value="{{.ApplicantID}}">
                                     <input type="hidden" name="application_id" value="{{.ID}}">

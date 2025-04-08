@@ -105,6 +105,7 @@ func main() {
 	r.GET("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicantsForm)
 	r.POST("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicants)
 	r.POST("/recruiter/request-interview", requireRole(models.Recruiter), handleRequestInterview)
+	r.POST("/recruiter/update-application-status", requireRole(models.Recruiter), handleUpdateApplicationStatus)
 	r.POST("/applicant/apply-job", requireRole(models.Applicant), handleApplyJob)
 	r.POST("/applicant/upload-resume", requireRole(models.Applicant), handleUploadResume)
 	r.POST("/applicant/update-interview", requireRole(models.Applicant), handleUpdateInterview)
@@ -624,18 +625,95 @@ func handlePostJob(c *gin.Context) {
 		return
 	}
 
+	// Notify followers
 	followers, err := db.GetCompanyFollowers(companyID)
 	if err != nil {
 		log.Println("Failed to fetch followers for notification:", err)
 	} else {
 		for _, follower := range followers {
-			go sendJobNotification(follower.Email, title, companyID)
+			// Use follower.Email directly since GetCompanyFollowers returns full User structs
+			if follower.Email != "" {
+				go sendJobNotification(follower.Email, title, companyID)
+			} else {
+				log.Println("Follower has no email:", follower.ID)
+			}
 		}
 	}
 
 	c.Redirect(http.StatusFound, "/dashboard")
 }
+func handleUpdateApplicationStatus(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
 
+	applicationID := c.PostForm("application_id")
+	status := c.PostForm("status")
+	log.Println("Updating application", applicationID, "to status:", status)
+
+	validStatuses := map[string]bool{
+		"Pending":             true,
+		"Reviewed":            true,
+		"Interview Scheduled": true,
+		"Offered":             true,
+		"Rejected":            true,
+	}
+	if !validStatuses[status] {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid status selected"})
+		return
+	}
+
+	application, err := db.GetApplication(applicationID)
+	if err != nil {
+		log.Println("Failed to fetch application:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch application: " + err.Error()})
+		return
+	}
+
+	if err := db.UpdateApplicationStatus(applicationID, status); err != nil {
+		log.Println("Failed to update application status:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to update status: " + err.Error()})
+		return
+	}
+
+	// Notify applicant
+	applicantEmail, err := db.GetUserEmail(application.ApplicantID)
+	if err != nil {
+		log.Println("Failed to fetch applicant email:", err)
+	} else {
+		job, err := db.GetJob(application.JobID)
+		if err != nil {
+			log.Println("Failed to fetch job for notification:", err)
+		} else {
+			go sendStatusUpdateNotification(applicantEmail, job.Title, status)
+		}
+	}
+
+	c.Redirect(http.StatusFound, "/dashboard")
+}
+func sendStatusUpdateNotification(toEmail, jobTitle, status string) {
+	msg := []byte(fmt.Sprintf(
+		"Subject: Application Status Update for %s\r\n"+
+			"\r\n"+
+			"Dear Applicant,\r\n"+
+			"Your application for the position '%s' has been updated.\r\n"+
+			"New Status: %s\r\n"+
+			"View details at: http://localhost:8080/dashboard\r\n"+
+			"\r\n"+
+			"Best regards,\r\n"+
+			"Recruitment Team\r\n",
+		jobTitle, jobTitle, status))
+
+	err := smtp.SendMail(smtpAddr, smtpAuth, os.Getenv("SMTP_EMAIL"), []string{toEmail}, msg)
+	if err != nil {
+		log.Println("Failed to send status update notification:", err)
+	} else {
+		log.Println("Status update notification sent to:", toEmail)
+	}
+}
 func handleSearchApplicantsForm(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
