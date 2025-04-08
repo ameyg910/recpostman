@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -28,6 +29,7 @@ var (
 	googleOauthConfig *oauth2.Config
 	smtpAuth          smtp.Auth
 	smtpAddr          = "smtp.gmail.com:587"
+	geminiAPIKey      string
 )
 
 func init() {
@@ -56,7 +58,10 @@ func init() {
 	if os.Getenv("SMTP_EMAIL") == "" || os.Getenv("SMTP_APP_PASSWORD") == "" {
 		log.Fatal("SMTP_EMAIL or SMTP_APP_PASSWORD not set in .env")
 	}
-
+	geminiAPIKey = os.Getenv("GEMINI_API_KEY")
+	if geminiAPIKey == "" {
+		log.Fatal("GEMINI_API_KEY not set in .env")
+	}
 	db.InitDB()
 }
 
@@ -96,6 +101,7 @@ func main() {
 
 	r.GET("/dashboard", requireRole(models.SuperAdmin, models.Recruiter, models.Applicant), handleDashboard)
 	r.POST("/recruiter/post-job", requireRole(models.Recruiter), handlePostJob)
+	r.POST("/recruiter/parse-resume", requireRole(models.Recruiter), handleParseResume)
 	r.GET("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicantsForm)
 	r.POST("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicants)
 	r.POST("/recruiter/request-interview", requireRole(models.Recruiter), handleRequestInterview)
@@ -223,7 +229,159 @@ func handleGoogleCallback(c *gin.Context) {
 	log.Println("Redirecting to /select-role for new user")
 	c.Redirect(http.StatusFound, "/select-role?id="+user.ID)
 }
+func handleParseResume(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
 
+	applicantID := c.PostForm("applicant_id")
+	applicationID := c.PostForm("application_id")
+	if applicantID == "" || applicationID == "" {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Applicant ID and Application ID are required"})
+		return
+	}
+
+	application, err := db.GetApplication(applicationID)
+	if err != nil {
+		log.Println("Failed to fetch application:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch application: " + err.Error()})
+		return
+	}
+
+	// Get the resume file path from the application
+	resumePath := application.Resume
+	if resumePath == "" {
+		c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "No resume found for this application"})
+		return
+	}
+
+	// Extract text from the PDF
+	filePath := filepath.Join(".", resumePath) // Remove "/uploads/" prefix since it's served statically
+	pdfText, err := extractPDFText(filePath)
+	if err != nil {
+		log.Println("Failed to extract PDF text:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to extract PDF text: " + err.Error()})
+		return
+	}
+
+	// Call Gemini API to parse the resume
+	parsedResume, err := parseResumeWithGemini(pdfText)
+	if err != nil {
+		log.Println("Failed to parse resume with Gemini:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to parse resume: " + err.Error()})
+		return
+	}
+
+	// Fetch applicant and application details for context
+	applicant, err := db.GetUser(applicantID)
+	if err != nil {
+		log.Println("Failed to fetch applicant:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch applicant: " + err.Error()})
+		return
+	}
+
+	// Render the parsed resume on the application page
+	c.HTML(http.StatusOK, "application_details.html", gin.H{
+		"Applicant":    applicant,
+		"Application":  application,
+		"ParsedResume": parsedResume,
+	})
+}
+func extractPDFText(filePath string) (string, error) {
+	f, r, err := pdf.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open PDF: %v", err)
+	}
+	defer f.Close()
+
+	totalPage := r.NumPage()
+	var text strings.Builder
+	for i := 1; i <= totalPage; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		pageText, err := p.GetPlainText(nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to extract text from page %d: %v", i, err)
+		}
+		text.WriteString(pageText)
+	}
+	return text.String(), nil
+}
+func parseResumeWithGemini(pdfText string) (map[string]interface{}, error) {
+	prompt := `Summarize the following resume and extract key details such as name, skills, education, and work experience in a structured JSON format:
+	` + pdfText
+
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiAPIKey
+	payload := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": prompt},
+				},
+			},
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Gemini API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Gemini API returned non-OK status: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Gemini API response: %v", err)
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal Gemini API response: %v", err)
+	}
+
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("no content returned from Gemini API")
+	}
+
+	parsedText := result.Candidates[0].Content.Parts[0].Text
+	log.Println("Raw Gemini response:", parsedText) // Debug log
+
+	// Clean up the response: remove backticks and markdown markers
+	parsedText = strings.TrimSpace(parsedText)
+	parsedText = strings.TrimPrefix(parsedText, "```json")
+	parsedText = strings.TrimSuffix(parsedText, "```")
+	parsedText = strings.TrimSpace(parsedText)
+
+	var parsedResume map[string]interface{}
+	if err := json.Unmarshal([]byte(parsedText), &parsedResume); err != nil {
+		log.Println("Cleaned Gemini response (failed to parse):", parsedText) // Debug log on failure
+		return nil, fmt.Errorf("failed to parse Gemini response as JSON: %v", err)
+	}
+
+	log.Println("Parsed resume successfully:", parsedResume) // Debug log
+	return parsedResume, nil
+}
 func handleSelectRole(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")

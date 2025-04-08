@@ -80,6 +80,7 @@
                         <th>Job Title</th>
                         <th>Resume</th>
                         <th>Status</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -89,6 +90,13 @@
                             <td>{{.JobTitle}}</td>
                             <td><a href="{{.Resume}}" target="_blank">View Resume</a></td>
                             <td>{{.Status}}</td>
+                            <td>
+                                <form action="/recruiter/parse-resume" method="POST" class="d-inline">
+                                    <input type="hidden" name="applicant_id" value="{{.ApplicantID}}">
+                                    <input type="hidden" name="application_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-sm btn-info">Parse Resume</button>
+                                </form>
+                            </td>
                         </tr>
                     {{end}}
                 </tbody>

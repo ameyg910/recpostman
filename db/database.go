@@ -545,7 +545,17 @@ func GetCompanyFollowers(companyID int) ([]models.User, error) {
 	}
 	return users, nil
 }
-
+func GetApplication(id string) (*models.Application, error) {
+	application := &models.Application{}
+	err := DB.QueryRow(`
+		SELECT id, job_id, applicant_id, resume, status 
+		FROM applications 
+		WHERE id = $1`, id).Scan(&application.ID, &application.JobID, &application.ApplicantID, &application.Resume, &application.Status)
+	if err != nil {
+		return nil, err
+	}
+	return application, nil
+}
 func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
 	rows, err := DB.Query(`
 		SELECT u.id, u.email, u.name, u.role, u.company_id, c.id, c.title, c.description, c.logo
