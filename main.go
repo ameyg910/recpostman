@@ -605,24 +605,7 @@ func handleUploadResume(c *gin.Context) {
 		return
 	}
 
-	// Save the file temporarily to parse it
-	tempFilePath := filepath.Join("./uploads", "temp_"+file.Filename)
-	if err := c.SaveUploadedFile(file, tempFilePath); err != nil {
-		log.Println("Failed to save temp file:", err)
-		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
-		return
-	}
-	defer os.Remove(tempFilePath) // Clean up temp file after parsing
-
-	// Parse and validate the PDF
-	valid, errMsg := validatePDF(tempFilePath)
-	if !valid {
-		log.Println("PDF validation failed:", errMsg)
-		renderApplicantDashboard(c, userID.(string), errMsg)
-		return
-	}
-
-	// Proceed with permanent storage if valid
+	// Ensure upload directory exists
 	uploadDir := "./uploads"
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
 		log.Println("Creating upload directory")
@@ -632,17 +615,37 @@ func handleUploadResume(c *gin.Context) {
 			return
 		}
 	}
+
+	// Save and validate PDF
+	tempFilePath := filepath.Join(uploadDir, "temp_"+file.Filename)
+	if err := c.SaveUploadedFile(file, tempFilePath); err != nil {
+		log.Println("Failed to save temp file:", err)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
+		return
+	}
+	defer os.Remove(tempFilePath)
+
+	valid, errMsg := validatePDF(tempFilePath)
+	if !valid {
+		log.Println("PDF validation failed:", errMsg)
+		renderApplicantDashboard(c, userID.(string), errMsg)
+		return
+	}
+
 	filename := userID.(string) + "_" + file.Filename
 	filePath := filepath.Join(uploadDir, filename)
-	log.Println("Attempting to save file to:", filePath)
 	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		log.Println("Failed to save file:", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save resume: " + err.Error()})
 		return
 	}
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Println("File does not exist after saving:", filePath)
+		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "File save verification failed"})
+		return
+	}
 	log.Println("File saved successfully to:", filePath)
 
-	log.Println("Fetching user from DB")
 	user, err := db.GetUser(userID.(string))
 	if err != nil {
 		log.Println("Failed to fetch user:", err)
@@ -650,19 +653,14 @@ func handleUploadResume(c *gin.Context) {
 		return
 	}
 	user.Resume = "/uploads/" + filename
-	log.Println("Updating user with resume:", user.Resume)
 	if err := db.SaveUser(user); err != nil {
 		log.Println("Failed to update user:", err)
 		c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to update user with resume: " + err.Error()})
 		return
 	}
-	log.Println("User updated successfully")
-
-	log.Println("Redirecting to /dashboard")
 	c.Redirect(http.StatusFound, "/dashboard")
 }
 
-// Helper function to validate PDF content using github.com/ledongthuc/pdf
 func validatePDF(filePath string) (bool, string) {
 	f, r, err := pdf.Open(filePath)
 	if err != nil {
@@ -683,14 +681,18 @@ func validatePDF(filePath string) (bool, string) {
 		}
 		text += pageText
 	}
+	log.Println("Extracted PDF text:", text) // Debug log
 
-	// Convert text to lowercase for case-insensitive matching
 	text = strings.ToLower(text)
-
-	// Check for required fields
-	hasName := strings.Contains(text, "name")
+	// Broaden "name" detection
+	hasName := strings.Contains(text, "name") ||
+		strings.Contains(text, "resume of") ||
+		len(text) > 50 // Assume a long text likely includes a name
 	hasSkills := strings.Contains(text, "skills") || strings.Contains(text, "skill")
-	hasEducation := strings.Contains(text, "education") || strings.Contains(text, "degree") || strings.Contains(text, "university") || strings.Contains(text, "college")
+	hasEducation := strings.Contains(text, "education") ||
+		strings.Contains(text, "degree") ||
+		strings.Contains(text, "university") ||
+		strings.Contains(text, "college")
 
 	if !hasName || !hasSkills || !hasEducation {
 		missing := []string{}
@@ -705,11 +707,9 @@ func validatePDF(filePath string) (bool, string) {
 		}
 		return false, "Incomplete resume: missing " + strings.Join(missing, ", ") + "."
 	}
-
 	return true, ""
 }
 
-// Helper function to render applicant dashboard with error message
 func renderApplicantDashboard(c *gin.Context, userID string, message string) {
 	user, err := db.GetUser(userID)
 	if err != nil {
