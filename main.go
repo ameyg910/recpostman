@@ -106,6 +106,7 @@ func main() {
 	r.POST("/recruiter/search-applicants", requireRole(models.Recruiter), handleSearchApplicants)
 	r.POST("/recruiter/request-interview", requireRole(models.Recruiter), handleRequestInterview)
 	r.POST("/recruiter/update-application-status", requireRole(models.Recruiter), handleUpdateApplicationStatus)
+	r.POST("/applicant/bookmark-job", requireRole(models.Applicant), handleBookmarkJob)
 	r.POST("/applicant/apply-job", requireRole(models.Applicant), handleApplyJob)
 	r.POST("/applicant/upload-resume", requireRole(models.Applicant), handleUploadResume)
 	r.POST("/applicant/update-interview", requireRole(models.Applicant), handleUpdateInterview)
@@ -538,6 +539,10 @@ func handleDashboard(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to fetch applications: "+err.Error())
 			return
 		}
+		// Debug: Log each application's status
+		for _, app := range applications {
+			log.Printf("Application ID: %d, Status: '%s'", app.ID, app.Status)
+		}
 		c.HTML(http.StatusOK, "recruiter_dashboard.html", gin.H{
 			"Name":         user.Name,
 			"Company":      company,
@@ -570,6 +575,11 @@ func handleDashboard(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to fetch followed companies: "+err.Error())
 			return
 		}
+		bookmarkedJobs, err := db.GetBookmarkedJobs(user.ID)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to fetch bookmarked jobs: "+err.Error())
+			return
+		}
 		c.HTML(http.StatusOK, "applicant_dashboard.html", gin.H{
 			"Name":              user.Name,
 			"Skills":            user.Skills,
@@ -579,6 +589,7 @@ func handleDashboard(c *gin.Context) {
 			"Interviews":        interviews,
 			"Resume":            user.Resume,
 			"FollowedCompanies": followedCompanies,
+			"BookmarkedJobs":    bookmarkedJobs,
 		})
 	case models.SuperAdmin:
 		c.HTML(http.StatusOK, "dashboard.html", gin.H{
@@ -652,6 +663,7 @@ func handleUpdateApplicationStatus(c *gin.Context) {
 
 	applicationID := c.PostForm("application_id")
 	status := c.PostForm("status")
+	scheduledAtStr := c.PostForm("scheduled_at")
 	log.Println("Updating application", applicationID, "to status:", status)
 
 	validStatuses := map[string]bool{
@@ -679,7 +691,50 @@ func handleUpdateApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	// Notify applicant
+	// If status is "Interview Scheduled," create an interview record
+	if status == "Interview Scheduled" {
+		if scheduledAtStr == "" {
+			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Scheduled time is required for Interview Scheduled status"})
+			return
+		}
+		scheduledAt, err := time.Parse("2006-01-02 15:04", scheduledAtStr)
+		if err != nil {
+			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Invalid scheduled time format (use YYYY-MM-DD HH:MM): " + err.Error()})
+			return
+		}
+
+		job, err := db.GetJob(application.JobID)
+		if err != nil {
+			log.Println("Failed to fetch job for interview:", err)
+			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch job: " + err.Error()})
+			return
+		}
+
+		applicant, err := db.GetUser(application.ApplicantID)
+		if err != nil {
+			log.Println("Failed to fetch applicant for interview:", err)
+			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to fetch applicant: " + err.Error()})
+			return
+		}
+
+		interview := models.Interview{
+			JobID:       application.JobID,
+			ApplicantID: application.ApplicantID,
+			RecruiterID: userID.(string),
+			Status:      "requested",
+			ScheduledAt: scheduledAt,
+		}
+		interviewID, err := db.SaveInterview(&interview)
+		if err != nil {
+			log.Println("Failed to save interview:", err)
+			c.HTML(http.StatusInternalServerError, "error.html", gin.H{"Message": "Failed to save interview: " + err.Error()})
+			return
+		}
+
+		go sendInterviewNotification(applicant.Email, job.Title, scheduledAt, interviewID)
+	}
+
+	// Notify applicant about status update
 	applicantEmail, err := db.GetUserEmail(application.ApplicantID)
 	if err != nil {
 		log.Println("Failed to fetch applicant email:", err)
@@ -766,7 +821,29 @@ func handleSearchApplicants(c *gin.Context) {
 		"ApplicantsLoaded": true,
 	})
 }
+func handleBookmarkJob(c *gin.Context) {
+	session := sessions.Default(c)
+	userID := session.Get("user_id")
+	if userID == nil {
+		c.Redirect(http.StatusFound, "/auth/google/login")
+		return
+	}
 
+	jobIDStr := c.PostForm("job_id")
+	jobID, err := strconv.Atoi(jobIDStr)
+	if err != nil {
+		c.String(http.StatusBadRequest, "Invalid job ID")
+		return
+	}
+
+	if err := db.BookmarkJob(userID.(string), jobID); err != nil {
+		log.Println("Failed to bookmark job:", err)
+		c.String(http.StatusInternalServerError, "Failed to bookmark job: "+err.Error())
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/dashboard")
+}
 func handleApplyJob(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")

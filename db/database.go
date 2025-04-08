@@ -121,6 +121,17 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creating company_followers table: ", err)
 	}
+
+	bookmarkQuery := `
+    CREATE TABLE IF NOT EXISTS job_bookmarks (
+        user_id TEXT REFERENCES users(id),
+        job_id INTEGER REFERENCES jobs(id),
+        PRIMARY KEY (user_id, job_id)
+    );`
+	_, err = DB.Exec(bookmarkQuery)
+	if err != nil {
+		log.Fatal("Error creating job_bookmarks table: ", err)
+	}
 }
 
 func GetUser(id string) (*models.User, error) {
@@ -589,4 +600,42 @@ func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
 		recruiters = append(recruiters, r)
 	}
 	return recruiters, nil
+}
+func BookmarkJob(userID string, jobID int) error {
+	_, err := DB.Exec(`
+        INSERT INTO job_bookmarks (user_id, job_id)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id, job_id) DO NOTHING`, // Prevents duplicate bookmarks
+		userID, jobID)
+	return err
+}
+
+func GetBookmarkedJobs(userID string) ([]models.Job, error) {
+	rows, err := DB.Query(`
+        SELECT j.id, j.title, j.description, j.skills, j.company_id, j.posted_by, j.created_at
+        FROM jobs j
+        JOIN job_bookmarks jb ON j.id = jb.job_id
+        WHERE jb.user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var job models.Job
+		var skillsJSON []byte
+		err := rows.Scan(&job.ID, &job.Title, &job.Description, &skillsJSON, &job.CompanyID, &job.PostedBy, &job.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		if skillsJSON != nil {
+			err = json.Unmarshal(skillsJSON, &job.Skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
 }

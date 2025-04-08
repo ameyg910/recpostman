@@ -9,6 +9,7 @@
         body { background-color: #f8f9fa; font-family: Arial, sans-serif; }
         .header { background-color: #007bff; color: white; padding: 20px 0; text-align: center; }
         .btn-custom { margin: 5px; }
+        .debug { display: none; } /* Hide debug output */
     </style>
 </head>
 <body>
@@ -93,13 +94,18 @@
                             <td>
                                 <form action="/recruiter/update-application-status" method="POST" class="d-inline">
                                     <input type="hidden" name="application_id" value="{{.ID}}">
-                                    <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                                    <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="toggleScheduledAt(this)">
                                         <option value="Pending" {{if eq .Status "Pending"}}selected{{end}}>Pending</option>
                                         <option value="Reviewed" {{if eq .Status "Reviewed"}}selected{{end}}>Reviewed</option>
                                         <option value="Interview Scheduled" {{if eq .Status "Interview Scheduled"}}selected{{end}}>Interview Scheduled</option>
                                         <option value="Offered" {{if eq .Status "Offered"}}selected{{end}}>Offered</option>
                                         <option value="Rejected" {{if eq .Status "Rejected"}}selected{{end}}>Rejected</option>
                                     </select>
+                                    <input type="text" name="scheduled_at" placeholder="YYYY-MM-DD HH:MM"
+    class="form-control d-inline w-auto {{if ne .Status "Interview Scheduled"}}d-none{{end}}" required>
+
+                                    <span class="debug">Status: {{.Status | printf "%q" }}, Rendered Display: {{if eq .Status "Interview Scheduled"}}inline-block{{else}}none{{end}}</span>
+                                    <button type="submit" class="btn btn-sm btn-primary">Update</button>
                                 </form>
                                 <form action="/recruiter/parse-resume" method="POST" class="d-inline">
                                     <input type="hidden" name="applicant_id" value="{{.ApplicantID}}">
@@ -114,5 +120,14 @@
         {{end}}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleScheduledAt(select) {
+            const scheduledAtInput = select.parentElement.querySelector('input[name="scheduled_at"]');
+            scheduledAtInput.style.display = select.value === "Interview Scheduled" ? "inline-block" : "none";
+            scheduledAtInput.required = select.value === "Interview Scheduled";
+        }
+        // Initialize visibility on page load
+        document.querySelectorAll('select[name="status"]').forEach(toggleScheduledAt);
+    </script>
 </body>
 </html>

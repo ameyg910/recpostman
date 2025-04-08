@@ -103,9 +103,13 @@
                                     <td>{{.Description}}</td>
                                     <td>{{range .Skills}}{{.}}, {{end}}</td>
                                     <td>
-                                        <form action="/applicant/apply-job" method="POST">
+                                        <form action="/applicant/apply-job" method="POST" class="d-inline">
                                             <input type="hidden" name="job_id" value="{{.ID}}">
-                                            <button type="submit" class="btn btn-success">Apply</button>
+                                            <button type="submit" class="btn btn-success btn-sm">Apply</button>
+                                        </form>
+                                        <form action="/applicant/bookmark-job" method="POST" class="d-inline">
+                                            <input type="hidden" name="job_id" value="{{.ID}}">
+                                            <button type="submit" class="btn btn-warning btn-sm">Bookmark</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -114,6 +118,44 @@
                     </table>
                 {{else}}
                     <p>No jobs available.</p>
+                {{end}}
+            </div>
+        </div>
+
+        <!-- Bookmarked Jobs -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h3>Bookmarked Jobs</h3>
+                {{if .BookmarkedJobs}}
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Title</th>
+                                <th>Description</th>
+                                <th>Skills</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .BookmarkedJobs}}
+                                <tr>
+                                    <td>{{.ID}}</td>
+                                    <td>{{.Title}}</td>
+                                    <td>{{.Description}}</td>
+                                    <td>{{range .Skills}}{{.}}, {{end}}</td>
+                                    <td>
+                                        <form action="/applicant/apply-job" method="POST" class="d-inline">
+                                            <input type="hidden" name="job_id" value="{{.ID}}">
+                                            <button type="submit" class="btn btn-success btn-sm">Apply</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                {{else}}
+                    <p>No jobs bookmarked yet.</p>
                 {{end}}
             </div>
         </div>
