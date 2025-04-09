@@ -12,7 +12,7 @@
         <p><strong>Email:</strong> {{.Applicant.Email}}</p>
         <p><strong>Job ID:</strong> {{.Application.JobID}}</p>
         <p><strong>Status:</strong> {{.Application.Status}}</p>
-        <p><strong>Resume:</strong> <a href="/{{.Application.Resume}}" target="_blank">View Resume</a></p>
+        <p><strong>Resume:</strong> <a href="{{.Application.Resume}}" target="_blank">View Resume</a></p>
 
         {{if .ParsedResume}}
             <h4>Parsed Resume</h4>
