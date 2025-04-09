@@ -1,0 +1,20 @@
+## Libraries and Dependencies
+- **Standard Library**:
+  - `bytes`: For buffering JSON payloads.
+  - `encoding/json`: For JSON marshaling/unmarshaling.
+  - `fmt` and `log`: For formatting and logging.
+  - `io/ioutil`: For reading API responses (deprecated but used for simplicity).
+  - `net/http`: For HTTP requests (e.g., Gemini API).
+  - `net/smtp`: For email notifications via Google SMTP.
+  - `os` and `path/filepath`: For file operations (e.g., resume uploads).
+  - `strconv`: For string-to-int conversions.
+  - `strings`: For text manipulation.
+  - `time`: For date/time handling (e.g., interviews).
+- **External Libraries**:
+  - `github.com/joho/godotenv v1.5.1`: Loads `.env` for secure configuration.
+  - `github.com/lib/pq v1.10.9`: PostgreSQL driver for raw SQL queries.
+  - `golang.org/x/oauth2 v0.19.0`: Implements Google OAuth.
+  - `github.com/gin-contrib/sessions v1.0.2` and `github.com/gorilla/sessions v1.2.2`: Manages cookie-based sessions for RBAC.
+  - `github.com/ledongthuc/pdf v0.0.0-20240201131950-da5b75280b06`: Parses PDF resumes.
+  - `google.golang.org/api/gemini/v2`: Integrates Gemini 2.0 Flash API for resume parsing.
+  - `github.com/stretchr/testify v1.10.0` (indirect): Supports testing.
