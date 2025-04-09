@@ -35,7 +35,7 @@ var (
 func init() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file: ", err)
+		log.Println("Warning: No .env file found, falling back to environment variables: ", err)
 	}
 
 	googleOauthConfig = &oauth2.Config{
@@ -51,17 +51,18 @@ func init() {
 	}
 
 	if googleOauthConfig.ClientID == "" || googleOauthConfig.ClientSecret == "" {
-		log.Fatal("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set in .env")
+		log.Fatal("GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set in .env or environment variables")
 	}
 
 	smtpAuth = smtp.PlainAuth("", os.Getenv("SMTP_EMAIL"), os.Getenv("SMTP_APP_PASSWORD"), "smtp.gmail.com")
 	if os.Getenv("SMTP_EMAIL") == "" || os.Getenv("SMTP_APP_PASSWORD") == "" {
-		log.Fatal("SMTP_EMAIL or SMTP_APP_PASSWORD not set in .env")
+		log.Fatal("SMTP_EMAIL or SMTP_APP_PASSWORD not set in .env or environment variables")
 	}
 	geminiAPIKey = os.Getenv("GEMINI_API_KEY")
 	if geminiAPIKey == "" {
-		log.Fatal("GEMINI_API_KEY not set in .env")
+		log.Fatal("GEMINI_API_KEY not set in .env or environment variables")
 	}
+
 	db.InitDB()
 }
 
@@ -231,6 +232,7 @@ func handleGoogleCallback(c *gin.Context) {
 	log.Println("Redirecting to /select-role for new user")
 	c.Redirect(http.StatusFound, "/select-role?id="+user.ID)
 }
+
 func handleParseResume(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -292,6 +294,7 @@ func handleParseResume(c *gin.Context) {
 		"ParsedResume": parsedResume,
 	})
 }
+
 func extractPDFText(filePath string) (string, error) {
 	f, r, err := pdf.Open(filePath)
 	if err != nil {
@@ -314,6 +317,7 @@ func extractPDFText(filePath string) (string, error) {
 	}
 	return text.String(), nil
 }
+
 func parseResumeWithGemini(pdfText string) (map[string]interface{}, error) {
 	prompt := `Summarize the following resume and extract key details such as name, skills, education, and work experience in a structured JSON format:
 	` + pdfText
@@ -384,6 +388,7 @@ func parseResumeWithGemini(pdfText string) (map[string]interface{}, error) {
 	log.Println("Parsed resume successfully:", parsedResume) // Debug log
 	return parsedResume, nil
 }
+
 func handleSelectRole(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -653,6 +658,7 @@ func handlePostJob(c *gin.Context) {
 
 	c.Redirect(http.StatusFound, "/dashboard")
 }
+
 func handleUpdateApplicationStatus(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -749,6 +755,7 @@ func handleUpdateApplicationStatus(c *gin.Context) {
 
 	c.Redirect(http.StatusFound, "/dashboard")
 }
+
 func sendStatusUpdateNotification(toEmail, jobTitle, status string) {
 	msg := []byte(fmt.Sprintf(
 		"Subject: Application Status Update for %s\r\n"+
@@ -769,6 +776,7 @@ func sendStatusUpdateNotification(toEmail, jobTitle, status string) {
 		log.Println("Status update notification sent to:", toEmail)
 	}
 }
+
 func handleSearchApplicantsForm(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -821,6 +829,7 @@ func handleSearchApplicants(c *gin.Context) {
 		"ApplicantsLoaded": true,
 	})
 }
+
 func handleBookmarkJob(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -844,6 +853,7 @@ func handleBookmarkJob(c *gin.Context) {
 
 	c.Redirect(http.StatusFound, "/dashboard")
 }
+
 func handleApplyJob(c *gin.Context) {
 	session := sessions.Default(c)
 	userID := session.Get("user_id")
@@ -1317,7 +1327,6 @@ func handleApproveRecruiter(c *gin.Context) {
 	}
 	c.Redirect(http.StatusFound, "/admin/approve-recruiters")
 }
-
 func handleLogout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()

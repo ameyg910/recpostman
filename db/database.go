@@ -17,12 +17,12 @@ var DB *sql.DB
 func InitDB() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file: ", err)
+		log.Println("Warning: No .env file found, falling back to environment variables: ", err)
 	}
 
 	connStr := os.Getenv("DATABASE_URL")
 	if connStr == "" {
-		log.Fatal("DATABASE_URL not set in .env")
+		log.Fatal("DATABASE_URL not set in .env or environment variables")
 	}
 
 	db, err := sql.Open("postgres", connStr)
@@ -38,7 +38,7 @@ func InitDB() {
 	DB = db
 	log.Println("Database connection established")
 
-	// Create tables
+	// Create tables (unchanged)
 	userQuery := `
 	CREATE TABLE IF NOT EXISTS users (
 		id TEXT PRIMARY KEY,
@@ -310,10 +310,12 @@ func GetApplicationsByApplicant(applicantID string) ([]models.Application, error
 	}
 	return applications, nil
 }
+
 func UpdateApplicationStatus(applicationID, status string) error {
 	_, err := DB.Exec("UPDATE applications SET status = $1 WHERE id = $2", status, applicationID)
 	return err
 }
+
 func GetUserEmail(userID string) (string, error) {
 	var email string
 	err := DB.QueryRow("SELECT email FROM users WHERE id = $1", userID).Scan(&email)
@@ -337,16 +339,15 @@ func GetApplicationsByRecruiter(recruiterID string) ([]models.Application, error
 	var applications []models.Application
 	for rows.Next() {
 		var app models.Application
-		var resume sql.NullString // Handle nullable resume column
+		var resume sql.NullString
 		var jobTitle string
 		if err := rows.Scan(&app.ID, &app.JobID, &app.ApplicantID, &resume, &app.Status, &jobTitle); err != nil {
 			return nil, err
 		}
-		// Safely convert sql.NullString to string
 		if resume.Valid {
 			app.Resume = resume.String
 		} else {
-			app.Resume = "" // Default to empty string if NULL
+			app.Resume = ""
 		}
 		app.JobTitle = jobTitle
 		applications = append(applications, app)
@@ -567,6 +568,7 @@ func GetCompanyFollowers(companyID int) ([]models.User, error) {
 	}
 	return users, nil
 }
+
 func GetApplication(id string) (*models.Application, error) {
 	application := &models.Application{}
 	err := DB.QueryRow(`
@@ -578,6 +580,7 @@ func GetApplication(id string) (*models.Application, error) {
 	}
 	return application, nil
 }
+
 func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
 	rows, err := DB.Query(`
 		SELECT u.id, u.email, u.name, u.role, u.company_id, c.id, c.title, c.description, c.logo
@@ -601,11 +604,12 @@ func GetUnapprovedRecruitersWithCompanies() ([]models.UserWithCompany, error) {
 	}
 	return recruiters, nil
 }
+
 func BookmarkJob(userID string, jobID int) error {
 	_, err := DB.Exec(`
         INSERT INTO job_bookmarks (user_id, job_id)
         VALUES ($1, $2)
-        ON CONFLICT (user_id, job_id) DO NOTHING`, // Prevents duplicate bookmarks
+        ON CONFLICT (user_id, job_id) DO NOTHING`,
 		userID, jobID)
 	return err
 }
