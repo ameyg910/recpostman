@@ -1,6 +1,6 @@
 module rec_postman
 
-go 1.24.0 // Update to 1.24.0 (latest patch as of 1.24.2)
+go 1.24.0 
 
 toolchain go1.24.2
 

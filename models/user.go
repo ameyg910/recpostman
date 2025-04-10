@@ -2,7 +2,6 @@ package models
 
 import "time"
 
-// Role defines the possible user roles
 type Role string
 
 const (
@@ -11,7 +10,6 @@ const (
 	Applicant  Role = "applicant"
 )
 
-// User represents a user in the system
 type User struct {
 	ID        string   `json:"id"`
 	Email     string   `json:"email"`
@@ -23,7 +21,6 @@ type User struct {
 	Approved  bool     `json:"approved"`
 }
 
-// Company represents a company tied to a recruiter
 type Company struct {
 	ID          int    `json:"id"`
 	Title       string `json:"title"`
@@ -32,7 +29,6 @@ type Company struct {
 	Approved    bool   `json:"approved"`
 }
 
-// Job represents a job posting
 type Job struct {
 	ID          int       `json:"id"`
 	Title       string    `json:"title"`
@@ -43,7 +39,6 @@ type Job struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Application represents a job application
 type Application struct {
 	ID          int       `json:"id"`
 	JobID       int       `json:"job_id"`
@@ -51,10 +46,9 @@ type Application struct {
 	Resume      string    `json:"resume"`
 	Status      string    `json:"status"`
 	AppliedAt   time.Time `json:"applied_at"`
-	JobTitle    string    `json:"job_title,omitempty"` // For recruiter view
+	JobTitle    string    `json:"job_title,omitempty"`
 }
 
-// Interview represents an interview request
 type Interview struct {
 	ID          int       `json:"id"`
 	JobID       int       `json:"job_id"`
@@ -64,7 +58,6 @@ type Interview struct {
 	Status      string    `json:"status"`
 }
 
-// UserWithCompany is used for admin approval view
 type UserWithCompany struct {
 	ID        string  `json:"id"`
 	Email     string  `json:"email"`

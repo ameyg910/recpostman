@@ -255,15 +255,13 @@ func handleParseResume(c *gin.Context) {
 		return
 	}
 
-	// Get the resume file path from the application
 	resumePath := application.Resume
 	if resumePath == "" {
 		c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "No resume found for this application"})
 		return
 	}
 
-	// Extract text from the PDF
-	filePath := filepath.Join(".", resumePath) // Remove "/uploads/" prefix since it's served statically
+	filePath := filepath.Join(".", resumePath)
 	pdfText, err := extractPDFText(filePath)
 	if err != nil {
 		log.Println("Failed to extract PDF text:", err)
@@ -271,7 +269,6 @@ func handleParseResume(c *gin.Context) {
 		return
 	}
 
-	// Call Gemini API to parse the resume
 	parsedResume, err := parseResumeWithGemini(pdfText)
 	if err != nil {
 		log.Println("Failed to parse resume with Gemini:", err)
@@ -279,7 +276,6 @@ func handleParseResume(c *gin.Context) {
 		return
 	}
 
-	// Fetch applicant and application details for context
 	applicant, err := db.GetUser(applicantID)
 	if err != nil {
 		log.Println("Failed to fetch applicant:", err)
@@ -287,7 +283,6 @@ func handleParseResume(c *gin.Context) {
 		return
 	}
 
-	// Render the parsed resume on the application page
 	c.HTML(http.StatusOK, "application_details.html", gin.H{
 		"Applicant":    applicant,
 		"Application":  application,
@@ -371,9 +366,8 @@ func parseResumeWithGemini(pdfText string) (map[string]interface{}, error) {
 	}
 
 	parsedText := result.Candidates[0].Content.Parts[0].Text
-	log.Println("Raw Gemini response:", parsedText) // Debug log
+	log.Println("Raw Gemini response:", parsedText)
 
-	// Clean up the response: remove backticks and markdown markers
 	parsedText = strings.TrimSpace(parsedText)
 	parsedText = strings.TrimPrefix(parsedText, "```json")
 	parsedText = strings.TrimSuffix(parsedText, "```")
@@ -381,11 +375,11 @@ func parseResumeWithGemini(pdfText string) (map[string]interface{}, error) {
 
 	var parsedResume map[string]interface{}
 	if err := json.Unmarshal([]byte(parsedText), &parsedResume); err != nil {
-		log.Println("Cleaned Gemini response (failed to parse):", parsedText) // Debug log on failure
+		log.Println("Cleaned Gemini response (failed to parse):", parsedText)
 		return nil, fmt.Errorf("failed to parse Gemini response as JSON: %v", err)
 	}
 
-	log.Println("Parsed resume successfully:", parsedResume) // Debug log
+	log.Println("Parsed resume successfully:", parsedResume)
 	return parsedResume, nil
 }
 
@@ -544,7 +538,6 @@ func handleDashboard(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to fetch applications: "+err.Error())
 			return
 		}
-		// Debug: Log each application's status
 		for _, app := range applications {
 			log.Printf("Application ID: %d, Status: '%s'", app.ID, app.Status)
 		}
@@ -641,13 +634,11 @@ func handlePostJob(c *gin.Context) {
 		return
 	}
 
-	// Notify followers
 	followers, err := db.GetCompanyFollowers(companyID)
 	if err != nil {
 		log.Println("Failed to fetch followers for notification:", err)
 	} else {
 		for _, follower := range followers {
-			// Use follower.Email directly since GetCompanyFollowers returns full User structs
 			if follower.Email != "" {
 				go sendJobNotification(follower.Email, title, companyID)
 			} else {
@@ -697,7 +688,6 @@ func handleUpdateApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	// If status is "Interview Scheduled," create an interview record
 	if status == "Interview Scheduled" {
 		if scheduledAtStr == "" {
 			c.HTML(http.StatusBadRequest, "error.html", gin.H{"Message": "Scheduled time is required for Interview Scheduled status"})
@@ -740,7 +730,6 @@ func handleUpdateApplicationStatus(c *gin.Context) {
 		go sendInterviewNotification(applicant.Email, job.Title, scheduledAt, interviewID)
 	}
 
-	// Notify applicant about status update
 	applicantEmail, err := db.GetUserEmail(application.ApplicantID)
 	if err != nil {
 		log.Println("Failed to fetch applicant email:", err)
@@ -921,14 +910,12 @@ func handleUploadResume(c *gin.Context) {
 	}
 	log.Println("File received:", file.Filename)
 
-	// Validate file extension
 	if !strings.HasSuffix(strings.ToLower(file.Filename), ".pdf") {
 		log.Println("Invalid file type, must be PDF")
 		renderApplicantDashboard(c, userID.(string), "Please upload a PDF file.")
 		return
 	}
 
-	// Ensure upload directory exists
 	uploadDir := "./uploads"
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
 		log.Println("Creating upload directory")
@@ -939,7 +926,6 @@ func handleUploadResume(c *gin.Context) {
 		}
 	}
 
-	// Save and validate PDF
 	tempFilePath := filepath.Join(uploadDir, "temp_"+file.Filename)
 	if err := c.SaveUploadedFile(file, tempFilePath); err != nil {
 		log.Println("Failed to save temp file:", err)
@@ -1004,13 +990,12 @@ func validatePDF(filePath string) (bool, string) {
 		}
 		text += pageText
 	}
-	log.Println("Extracted PDF text:", text) // Debug log
+	log.Println("Extracted PDF text:", text)
 
 	text = strings.ToLower(text)
-	// Broaden "name" detection
 	hasName := strings.Contains(text, "name") ||
 		strings.Contains(text, "resume of") ||
-		len(text) > 50 // Assume a long text likely includes a name
+		len(text) > 50
 	hasSkills := strings.Contains(text, "skills") || strings.Contains(text, "skill")
 	hasEducation := strings.Contains(text, "education") ||
 		strings.Contains(text, "degree") ||
