@@ -1,0 +1,478 @@
+{
+    "info": {
+      "name": "Rec Postman API",
+      "_postman_id": "your-unique-id",
+      "description": "API for the Rec Postman recruitment application",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Health Check",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/",
+            "host": ["{{baseUrl}}"],
+            "path": [""]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Google OAuth Login",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/auth/google/login",
+            "host": ["{{baseUrl}}"],
+            "path": ["auth", "google", "login"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Google OAuth Callback",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/auth/google/callback?code={{code}}",
+            "host": ["{{baseUrl}}"],
+            "path": ["auth", "google", "callback"],
+            "query": [
+              {
+                "key": "code",
+                "value": "{{code}}"
+              }
+            ]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Select Role",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/select-role?id={{userId}}",
+            "host": ["{{baseUrl}}"],
+            "path": ["select-role"],
+            "query": [
+              {
+                "key": "id",
+                "value": "{{userId}}"
+              }
+            ]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Submit Role",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "role", "value": "recruiter" },
+              { "key": "company_title", "value": "Tech Corp" },
+              { "key": "company_description", "value": "Tech company" },
+              { "key": "company_logo", "value": "logo.png" },
+              { "key": "skills", "value": ["Go", "Python"], "type": "text" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/select-role",
+            "host": ["{{baseUrl}}"],
+            "path": ["select-role"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Logout",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/logout",
+            "host": ["{{baseUrl}}"],
+            "path": ["logout"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Dashboard",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/dashboard",
+            "host": ["{{baseUrl}}"],
+            "path": ["dashboard"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Post Job",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "title", "value": "Software Engineer" },
+              { "key": "description", "value": "Develop software" },
+              { "key": "skills", "value": ["Go", "Python"], "type": "text" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/post-job",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "post-job"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Parse Resume",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "applicant_id", "value": "user123" },
+              { "key": "application_id", "value": "app123" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/parse-resume",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "parse-resume"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Search Applicants Form",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/search-applicants",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "search-applicants"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Search Applicants",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "skills", "value": ["Go", "Python"], "type": "text" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/search-applicants",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "search-applicants"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Request Interview",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "applicant_id", "value": "user123" },
+              { "key": "job_id", "value": "1" },
+              { "key": "scheduled_at", "value": "2025-04-10 10:00" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/request-interview",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "request-interview"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Update Application Status",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "application_id", "value": "app123" },
+              { "key": "status", "value": "Interview Scheduled" },
+              { "key": "scheduled_at", "value": "2025-04-10 10:00" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/recruiter/update-application-status",
+            "host": ["{{baseUrl}}"],
+            "path": ["recruiter", "update-application-status"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Bookmark Job",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "job_id", "value": "1" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/applicant/bookmark-job",
+            "host": ["{{baseUrl}}"],
+            "path": ["applicant", "bookmark-job"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Apply Job",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "job_id", "value": "1" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/applicant/apply-job",
+            "host": ["{{baseUrl}}"],
+            "path": ["applicant", "apply-job"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Upload Resume",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "multipart/form-data"
+            }
+          ],
+          "body": {
+            "mode": "formdata",
+            "formdata": [
+              {
+                "key": "resume",
+                "type": "file",
+                "src": "/path/to/resume.pdf"
+              }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/applicant/upload-resume",
+            "host": ["{{baseUrl}}"],
+            "path": ["applicant", "upload-resume"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Update Interview",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "interview_id", "value": "1" },
+              { "key": "status", "value": "declined" },
+              { "key": "alternative_time", "value": "2025-04-11 10:00" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/applicant/update-interview",
+            "host": ["{{baseUrl}}"],
+            "path": ["applicant", "update-interview"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Follow Company",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "company_id", "value": "1" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/applicant/follow-company",
+            "host": ["{{baseUrl}}"],
+            "path": ["applicant", "follow-company"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Admin Panel",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/admin",
+            "host": ["{{baseUrl}}"],
+            "path": ["admin"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Approve Recruiters",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{baseUrl}}/admin/approve-recruiters",
+            "host": ["{{baseUrl}}"],
+            "path": ["admin", "approve-recruiters"]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Approve Recruiter",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ],
+          "body": {
+            "mode": "urlencoded",
+            "urlencoded": [
+              { "key": "id", "value": "user123" },
+              { "key": "company_id", "value": "1" }
+            ]
+          },
+          "url": {
+            "raw": "{{baseUrl}}/admin/approve-recruiter",
+            "host": ["{{baseUrl}}"],
+            "path": ["admin", "approve-recruiter"]
+          }
+        },
+        "response": []
+      }
+    ],
+    "event": [
+      {
+        "listen": "prerequest",
+        "script": {
+          "type": "text/javascript",
+          "exec": []
+        }
+      },
+      {
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": []
+        }
+      }
+    ],
+    "variable": [
+      {
+        "key": "baseUrl",
+        "value": "http://localhost:8080",
+        "type": "string"
+      },
+      {
+        "key": "userId",
+        "value": "user123",
+        "type": "string"
+      },
+      {
+        "key": "code",
+        "value": "your-oauth-code",
+        "type": "string"
+      }
+    ]
+  }

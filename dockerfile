@@ -19,5 +19,6 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/templates/ /app/templates/ 
+COPY --from=builder /app/.env /app/.env             
 EXPOSE 8080
 CMD ["./main"]
