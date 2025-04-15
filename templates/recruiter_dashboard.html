@@ -89,9 +89,9 @@
                             <td><a href="{{.Resume}}" target="_blank">View Resume</a></td>
                             <td>{{.Status}}</td>
                             <td>
-                                <form action="/recruiter/update-application-status" method="POST" class="d-inline">
+                                <form action="/recruiter/update-application-status" method="POST" class="d-inline" onsubmit="return confirmStatusChange(this)">
                                     <input type="hidden" name="application_id" value="{{.ID}}">
-                                    <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="toggleScheduledAt(this)">
+                                    <select name="status" class="form-select form-select-sm d-inline w-auto" onchange="toggleScheduledAt(this)" {{if ne .Status "Pending"}}disabled{{end}}>
                                         <option value="Pending" {{if eq .Status "Pending"}}selected{{end}}>Pending</option>
                                         <option value="Reviewed" {{if eq .Status "Reviewed"}}selected{{end}}>Reviewed</option>
                                         <option value="Interview Scheduled" {{if eq .Status "Interview Scheduled"}}selected{{end}}>Interview Scheduled</option>
@@ -99,8 +99,8 @@
                                         <option value="Rejected" {{if eq .Status "Rejected"}}selected{{end}}>Rejected</option>
                                     </select>
                                     <input type="text" name="scheduled_at" placeholder="YYYY-MM-DD HH:MM"
-                                        class="form-control d-inline w-auto" style="display: none;" required>
-                                    <button type="submit" class="btn btn-sm btn-primary">Update</button>
+                                        class="form-control d-inline w-auto d-none" required>
+                                    <button type="submit" class="btn btn-sm btn-primary" {{if ne .Status "Pending"}}disabled{{end}}>Update</button>
                                 </form>
                                 <form action="/recruiter/parse-resume" method="POST" class="d-inline">
                                     <input type="hidden" name="applicant_id" value="{{.ApplicantID}}">
@@ -118,11 +118,43 @@
     <script>
         function toggleScheduledAt(select) {
             const scheduledAtInput = select.parentElement.querySelector('input[name="scheduled_at"]');
-            scheduledAtInput.style.display = select.value === "Interview Scheduled" ? "inline-block" : "none";
-            scheduledAtInput.required = select.value === "Interview Scheduled";
+            if (select.value === "Interview Scheduled") {
+                scheduledAtInput.classList.remove('d-none');
+                scheduledAtInput.required = true;
+            } else {
+                scheduledAtInput.classList.add('d-none');
+                scheduledAtInput.required = false;
+                scheduledAtInput.value = ''; // Clear the input when hidden
+            }
         }
         
-        // Initialize all status selects
+        function confirmStatusChange(form) {
+            const select = form.querySelector('select[name="status"]');
+            const currentStatus = select.options[select.selectedIndex].text;
+            const scheduledAtInput = form.querySelector('input[name="scheduled_at"]');
+            
+            let confirmMessage = `Are you sure you want to change the status to "${currentStatus}"? This action cannot be undone.`;
+            
+            if (currentStatus === "Interview Scheduled") {
+                const dateTime = scheduledAtInput.value;
+                confirmMessage = `Are you sure you want to schedule an interview for ${dateTime}? This action cannot be undone.`;
+            }
+            
+            if (!confirm(confirmMessage)) {
+                return false;
+            }
+            
+            // After confirmation, disable the form elements to prevent further changes
+            setTimeout(() => {
+                select.disabled = true;
+                scheduledAtInput.classList.add('d-none');
+                form.querySelector('button[type="submit"]').disabled = true;
+            }, 100);
+            
+            return true;
+        }
+        
+        // Initialize all status selects on page load
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('select[name="status"]').forEach(function(select) {
                 toggleScheduledAt(select);
