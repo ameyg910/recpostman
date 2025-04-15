@@ -97,7 +97,7 @@ func InitDB() {
 		log.Fatal("Error creating applications table: ", err)
 	}
 
-	interviewQuery := `
+	/* interviewQuery := `
 	CREATE TABLE IF NOT EXISTS interviews (
 		id SERIAL PRIMARY KEY,
 		job_id INTEGER REFERENCES jobs(id),
@@ -109,7 +109,7 @@ func InitDB() {
 	_, err = DB.Exec(interviewQuery)
 	if err != nil {
 		log.Fatal("Error creating interviews table: ", err)
-	}
+	}*/
 
 	followQuery := `
 	CREATE TABLE IF NOT EXISTS company_followers (

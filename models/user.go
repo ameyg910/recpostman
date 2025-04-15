@@ -55,7 +55,9 @@ type Interview struct {
 	ApplicantID string    `json:"applicant_id"`
 	RecruiterID string    `json:"recruiter_id"`
 	ScheduledAt time.Time `json:"scheduled_at"`
-	Status      string    `json:"status"`
+	//MeetLink        string    `json:"meet_link,omitempty"`
+	//AlternativeTime time.Time `json:"alternative_time,omitempty"`
+	Status string `json:"status"`
 }
 
 type UserWithCompany struct {
