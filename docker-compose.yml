@@ -4,10 +4,10 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - POSTGRES_USER=postman_amey
-      - POSTGRES_PASSWORD=@Ameyb1ts
-      - POSTGRES_DB=rec_postman
-      - DATABASE_URL=postgres://postman_amey:@Ameyb1ts@db:5432/rec_postman?sslmode=disable
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+      - DATABASE_URL=${DATABASE_URL}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - SMTP_EMAIL=${SMTP_EMAIL}
@@ -22,9 +22,9 @@ services:
   db:
     image: postgres:15
     environment:
-      - POSTGRES_USER=postman_amey
-      - POSTGRES_PASSWORD=@Ameyb1ts
-      - POSTGRES_DB=rec_postman
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
