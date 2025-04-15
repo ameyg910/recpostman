@@ -27,7 +27,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 ENV GIN_MODE=release
-ENV SESSION_SECRET=your-session-secret-key
+ENV SESSION_SECRET=${SESSION_SECRET}
 
 EXPOSE 8080
 CMD ["./main"]
