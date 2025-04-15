@@ -25,18 +25,33 @@ func InitDB() {
 		log.Fatal("DATABASE_URL not set in .env or environment variables")
 	}
 
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal("Error connecting to database: ", err)
+	// Try to connect to the database with retries
+	var db *sql.DB
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		db, err = sql.Open("postgres", connStr)
+		if err != nil {
+			log.Printf("Attempt %d: Error connecting to database: %v", i+1, err)
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
+		err = db.Ping()
+		if err != nil {
+			log.Printf("Attempt %d: Error pinging database: %v", i+1, err)
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
+		// Successfully connected
+		DB = db
+		log.Println("Database connection established")
+		break
 	}
 
-	err = db.Ping()
-	if err != nil {
-		log.Fatal("Error pinging database: ", err)
+	if DB == nil {
+		log.Fatal("Failed to connect to database after multiple attempts")
 	}
-
-	DB = db
-	log.Println("Database connection established")
 
 	// Create tables (unchanged)
 	userQuery := `
@@ -97,7 +112,7 @@ func InitDB() {
 		log.Fatal("Error creating applications table: ", err)
 	}
 
-	/* interviewQuery := `
+	interviewQuery := `
 	CREATE TABLE IF NOT EXISTS interviews (
 		id SERIAL PRIMARY KEY,
 		job_id INTEGER REFERENCES jobs(id),
@@ -109,7 +124,7 @@ func InitDB() {
 	_, err = DB.Exec(interviewQuery)
 	if err != nil {
 		log.Fatal("Error creating interviews table: ", err)
-	}*/
+	}
 
 	followQuery := `
 	CREATE TABLE IF NOT EXISTS company_followers (

@@ -70,7 +70,21 @@ func main() {
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*")
 
-	store := cookie.NewStore([]byte("secret-key"))
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		sessionSecret = "default-secret-key" // Fallback secret key
+		log.Println("Warning: Using default session secret key. Set SESSION_SECRET for better security.")
+	}
+	
+	store := cookie.NewStore([]byte(sessionSecret))
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   86400, // 1 day
+		HttpOnly: true,
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	})
+	
 	r.Use(sessions.Sessions("mysession", store))
 
 	r.Static("/uploads", "./uploads")

@@ -99,8 +99,7 @@
                                         <option value="Rejected" {{if eq .Status "Rejected"}}selected{{end}}>Rejected</option>
                                     </select>
                                     <input type="text" name="scheduled_at" placeholder="YYYY-MM-DD HH:MM"
-                                        class="form-control d-inline w-auto {{if ne .Status "Interview Scheduled"}}d-none{{end}}" required>
-                                    <span class="debug">Status: {{.Status | printf "%q" }}, Rendered Display: {{if eq .Status "Interview Scheduled"}}inline-block{{else}}none{{end}}</span>
+                                        class="form-control d-inline w-auto" style="display: none;" required>
                                     <button type="submit" class="btn btn-sm btn-primary">Update</button>
                                 </form>
                                 <form action="/recruiter/parse-resume" method="POST" class="d-inline">
@@ -122,7 +121,13 @@
             scheduledAtInput.style.display = select.value === "Interview Scheduled" ? "inline-block" : "none";
             scheduledAtInput.required = select.value === "Interview Scheduled";
         }
-        document.querySelectorAll('select[name="status"]').forEach(toggleScheduledAt);
+        
+        // Initialize all status selects
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('select[name="status"]').forEach(function(select) {
+                toggleScheduledAt(select);
+            });
+        });
     </script>
 </body>
 </html>
